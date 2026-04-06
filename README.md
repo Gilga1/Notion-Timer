@@ -32,22 +32,14 @@ Open each of these in Notion, click **⋯ (More)** → **Add connections** → s
 - Your **Projects** database
 - Your **Tasks** database
 
-> The app is already hardcoded with your database IDs from your Second Brain:
->
-> - Projects: `aa6f3a67-ea4d-45c7-be7e-662d75f44219`
-> - Tasks: `b6925710-239e-4a03-a578-c0ead1ca85d4`
+> The app pulls database IDs for Projects and Tasks from the env files
 
 ### 4. Set your token
 
 ```bash
 cp .env.example .env
 # Edit .env and paste your token
-```
-
-Or just inline it when running:
-
-```bash
-NOTION_TOKEN=secret_xxx npm run dev
+# Edit add Project and Task env tokens
 ```
 
 ### 5. Run
