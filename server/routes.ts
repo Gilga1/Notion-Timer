@@ -5,8 +5,10 @@ import { storage } from "./storage";
 import { insertSessionSchema } from "@shared/schema";
 
 // Prefer data_source_id when available, but fall back to databases.query for standard Notion API setups.
-const PROJECTS_DS = "aa6f3a67-ea4d-45c7-be7e-662d75f44219"; // Projects collection
-const TASKS_DS    = "b6925710-239e-4a03-a578-c0ead1ca85d4"; // Tasks collection
+const PROJECTS_DS = process.env.PROJECTS_DS; // Projects collection
+const TASKS_DS = process.env.TASKS_DS; // Tasks collection
+
+console.log(PROJECTS_DS, TASKS_DS);
 
 function getNotion() {
   const token = process.env.NOTION_TOKEN;
@@ -15,7 +17,6 @@ function getNotion() {
 }
 
 export function registerRoutes(httpServer: Server, app: Express) {
-
   // ── GET /api/projects — fetch active projects ─────────────────────────────
   app.get("/api/projects", async (_req, res) => {
     try {
@@ -92,7 +93,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
         name: page.properties?.Name?.title?.[0]?.plain_text ?? "Untitled",
         status:
           page.properties?.Status?.status?.name ??
-          page.properties?.Completion?.status?.name ?? "",
+          page.properties?.Completion?.status?.name ??
+          "",
         timeSpentMins: page.properties?.["Time Spent (mins)"]?.number ?? 0,
         projectId: projectPageId,
       }));
@@ -126,10 +128,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       const all = storage.getAllSessions();
       const activeSession = all.find((s) => s.id === id);
-      if (!activeSession) return res.status(404).json({ error: "Session not found" });
+      if (!activeSession)
+        return res.status(404).json({ error: "Session not found" });
 
       const startMs = new Date(activeSession.startedAt).getTime();
-      const endMs   = new Date(endedAt).getTime();
+      const endMs = new Date(endedAt).getTime();
       const durationMins = parseFloat(((endMs - startMs) / 60000).toFixed(2));
 
       const session = storage.updateSession(id, endedAt, durationMins);
@@ -138,8 +141,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (session && process.env.NOTION_TOKEN) {
         try {
           const notion = getNotion();
-          const taskPage: any = await notion.pages.retrieve({ page_id: session.taskId });
-          const existing = taskPage.properties?.["Time Spent (mins)"]?.number ?? 0;
+          const taskPage: any = await notion.pages.retrieve({
+            page_id: session.taskId,
+          });
+          const existing =
+            taskPage.properties?.["Time Spent (mins)"]?.number ?? 0;
           await notion.pages.update({
             page_id: session.taskId,
             properties: {
