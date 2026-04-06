@@ -28,10 +28,12 @@ npm install
 ### 3. Share your databases with the integration
 
 Open each of these in Notion, click **⋯ (More)** → **Add connections** → select your integration:
+
 - Your **Projects** database
 - Your **Tasks** database
 
 > The app is already hardcoded with your database IDs from your Second Brain:
+>
 > - Projects: `aa6f3a67-ea4d-45c7-be7e-662d75f44219`
 > - Tasks: `b6925710-239e-4a03-a578-c0ead1ca85d4`
 
@@ -60,14 +62,14 @@ Open [http://localhost:5000](http://localhost:5000)
 
 ## How it works
 
-| Feature | What happens |
-|---|---|
-| Select Project | Fetches live from Notion (filtered to active/in-progress) |
-| Select Task | Fetches tasks linked to that project |
-| Start (Stopwatch) | Creates a local session entry, starts the clock |
-| Stop & Save | Calculates duration, **adds minutes to Notion task's `Time Spent (mins)` field** |
-| Pomodoro | 45m focus → 5m break → 45m focus → 10m long break. Each work block auto-saves to Notion |
-| Dashboard | Charts from local session log — bar chart, pie chart, top tasks, session log |
+| Feature           | What happens                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| Select Project    | Fetches live from Notion (filtered to active/in-progress)                               |
+| Select Task       | Fetches tasks linked to that project                                                    |
+| Start (Stopwatch) | Creates a local session entry, starts the clock                                         |
+| Stop & Save       | Calculates duration, **adds minutes to Notion task's `Time Spent (mins)` field**        |
+| Pomodoro          | 45m focus → 5m break → 45m focus → 10m long break. Each work block auto-saves to Notion |
+| Dashboard         | Charts from local session log — bar chart, pie chart, top tasks, session log            |
 
 ## Project structure
 
