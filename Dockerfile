@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Copy package files and install all deps (including devDeps for build)
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 # Copy source and build
 COPY . .
@@ -22,7 +22,7 @@ COPY --from=builder /app/package-lock.json ./
 COPY --from=builder /app/dist ./dist
 
 # Install only production dependencies (no devDeps)
-RUN npm ci --omit=dev
+RUN npm install --omit=dev --no-audit --no-fund
 
 # Data directory for the session JSON log (mount a volume here to persist data)
 RUN mkdir -p /app/data
