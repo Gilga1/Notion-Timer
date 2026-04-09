@@ -1,14 +1,11 @@
-import initSqlJs, { type Database } from "sql.js";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import type { Session, InsertSession } from "@shared/schema";
 
 const DB_PATH = process.env.SESSION_DB_PATH ?? path.resolve("focus-timer.db.json");
 
-// ── In-memory store backed by a JSON file ────────────────────────────────────
-// sql.js databases live in memory; we persist to disk as a JSON array on every write.
-// This is simple, reliable, and has zero native dependencies.
+// In-memory store backed by a JSON file.
+// Persist to disk as a JSON array on every write (simple, reliable, no native deps).
 
 interface SessionRow {
   id: number;

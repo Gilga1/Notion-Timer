@@ -3,12 +3,11 @@ import type { Server } from "http";
 import { Client } from "@notionhq/client";
 import { storage } from "./storage";
 import { insertSessionSchema } from "@shared/schema";
+import { registerRewardRoutes } from "./rewardRoutes";
 
 // Prefer data_source_id when available, but fall back to databases.query for standard Notion API setups.
 const PROJECTS_DS = process.env.PROJECTS_DS; // Projects collection
 const TASKS_DS = process.env.TASKS_DS; // Tasks collection
-
-console.log(PROJECTS_DS, TASKS_DS);
 
 function getNotion() {
   const token = process.env.NOTION_TOKEN;
@@ -16,12 +15,33 @@ function getNotion() {
   return new Client({ auth: token });
 }
 
+async function queryNotionCollection(
+  notion: any,
+  id: string,
+  queryPayload: any,
+): Promise<any> {
+  // Prefer data sources when supported, otherwise use databases.query or the raw request.
+  if (notion?.dataSources && typeof notion.dataSources.query === "function") {
+    return notion.dataSources.query({ data_source_id: id, ...queryPayload });
+  }
+  if (notion?.databases && typeof notion.databases.query === "function") {
+    return notion.databases.query({ database_id: id, ...queryPayload });
+  }
+  return notion.request({
+    path: `/databases/${id}/query`,
+    method: "post",
+    body: queryPayload,
+  });
+}
+
 export function registerRoutes(httpServer: Server, app: Express) {
   // ── GET /api/projects — fetch active projects ─────────────────────────────
   app.get("/api/projects", async (_req, res) => {
     try {
       const notion = getNotion();
-      let response: any;
+      if (!PROJECTS_DS) {
+        return res.status(500).json({ error: "PROJECTS_DS not set" });
+      }
       const queryPayload = {
         filter: {
           and: [
@@ -36,17 +56,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
         },
         sorts: [{ property: "Priority", direction: "ascending" }],
       };
-      try {
-        response = await notion.dataSources.query({
-          data_source_id: PROJECTS_DS,
-          ...queryPayload,
-        } as any);
-      } catch (_err) {
-        response = await notion.databases.query({
-          database_id: PROJECTS_DS,
-          ...queryPayload,
-        } as any);
-      }
+      const response = await queryNotionCollection(
+        notion as any,
+        PROJECTS_DS,
+        queryPayload,
+      );
 
       const projects = (response.results as any[]).map((page: any) => ({
         id: page.id,
@@ -66,9 +80,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/tasks/:projectId", async (req, res) => {
     try {
       const notion = getNotion();
+      if (!TASKS_DS) {
+        return res.status(500).json({ error: "TASKS_DS not set" });
+      }
       const projectPageId = req.params.projectId;
 
-      let response: any;
       const queryPayload = {
         filter: {
           property: "Projects",
@@ -76,17 +92,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
         },
         sorts: [{ property: "Status", direction: "ascending" }],
       };
-      try {
-        response = await notion.dataSources.query({
-          data_source_id: TASKS_DS,
-          ...queryPayload,
-        } as any);
-      } catch (_err) {
-        response = await notion.databases.query({
-          database_id: TASKS_DS,
-          ...queryPayload,
-        } as any);
-      }
+      const response = await queryNotionCollection(
+        notion as any,
+        TASKS_DS,
+        queryPayload,
+      );
 
       const tasks = (response.results as any[]).map((page: any) => ({
         id: page.id,
@@ -184,4 +194,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, notionConfigured: !!process.env.NOTION_TOKEN });
   });
+
+  // Register reward routes (includes /api/habits/streaks and /api/rewards/*)
+  registerRewardRoutes(app);
 }
