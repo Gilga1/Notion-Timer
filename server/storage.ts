@@ -1,8 +1,30 @@
 import fs from "fs";
 import path from "path";
-import type { Session, InsertSession } from "@shared/schema";
+import type { Session, InsertSession, UpdateSession } from "@shared/schema";
 
 const DB_PATH = process.env.SESSION_DB_PATH ?? path.resolve("focus-timer.db.json");
+const LOCK_PATH = DB_PATH + ".lock";
+
+function acquireLock(maxAttempts = 50, intervalMs = 50): void {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      fs.writeFileSync(LOCK_PATH, process.pid.toString(), { flag: "wx" });
+      return;
+    } catch (err: any) {
+      if (err.code !== "EEXIST") throw err;
+      try {
+        fs.unlinkSync(LOCK_PATH);
+      } catch {}
+      if (i === maxAttempts - 1) throw new Error("Could not acquire lock");
+    }
+  }
+}
+
+function releaseLock(): void {
+  try {
+    fs.unlinkSync(LOCK_PATH);
+  } catch {}
+}
 
 // In-memory store backed by a JSON file.
 // Persist to disk as a JSON array on every write (simple, reliable, no native deps).
@@ -20,16 +42,25 @@ interface SessionRow {
 }
 
 function load(): SessionRow[] {
+  acquireLock();
   try {
     if (fs.existsSync(DB_PATH)) {
-      return JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
+      const data = fs.readFileSync(DB_PATH, "utf8");
+      return JSON.parse(data);
     }
-  } catch {}
+  } catch {} finally {
+    releaseLock();
+  }
   return [];
 }
 
 function save(rows: SessionRow[]) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(rows, null, 2));
+  acquireLock();
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(rows, null, 2));
+  } finally {
+    releaseLock();
+  }
 }
 
 function getDateInTimeZone(iso: string, timeZone: string) {
@@ -51,7 +82,15 @@ function getTodayInTimeZone(timeZone: string) {
 }
 
 let _rows: SessionRow[] = load();
-let _nextId = _rows.length > 0 ? Math.max(..._rows.map((r) => r.id)) + 1 : 1;
+let _lockCount = 0;
+
+function getNextId(): number {
+  return _rows.length > 0 ? Math.max(..._rows.map((r) => r.id)) + 1 : 1;
+}
+
+function reloadFromDisk() {
+  _rows = load();
+}
 
 function rowToSession(r: SessionRow): Session {
   return {
@@ -70,6 +109,10 @@ function rowToSession(r: SessionRow): Session {
 export interface IStorage {
   createSession(data: InsertSession): Session;
   updateSession(id: number, endedAt: string, durationMins: number): Session | undefined;
+  patchSession(id: number, patch: UpdateSession): Session | undefined;
+  deleteSession(id: number): boolean;
+  getSessionById(id: number): Session | null;
+  reload(): { count: number };
   getAllSessions(): Session[];
   getTodaySessions(): Session[];
   getActiveSession(): Session | null;
@@ -78,8 +121,9 @@ export interface IStorage {
 
 export class Storage implements IStorage {
   createSession(data: InsertSession): Session {
+    const id = getNextId();
     const row: SessionRow = {
-      id: _nextId++,
+      id,
       project_id: data.projectId,
       project_name: data.projectName,
       task_id: data.taskId,
@@ -101,6 +145,41 @@ export class Storage implements IStorage {
     row.duration_mins = durationMins;
     save(_rows);
     return rowToSession(row);
+  }
+
+  patchSession(id: number, patch: UpdateSession): Session | undefined {
+    const row = _rows.find((r) => r.id === id);
+    if (!row) return undefined;
+
+    if (Object.prototype.hasOwnProperty.call(patch, "endedAt")) {
+      row.ended_at = patch.endedAt ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "durationMins")) {
+      row.duration_mins = patch.durationMins ?? null;
+    }
+
+    save(_rows);
+    return rowToSession(row);
+  }
+
+  deleteSession(id: number): boolean {
+    const before = _rows.length;
+    _rows = _rows.filter((r) => r.id !== id);
+    const changed = _rows.length !== before;
+    if (changed) {
+      save(_rows);
+    }
+    return changed;
+  }
+
+  getSessionById(id: number): Session | null {
+    const row = _rows.find((r) => r.id === id);
+    return row ? rowToSession(row) : null;
+  }
+
+  reload(): { count: number } {
+    reloadFromDisk();
+    return { count: _rows.length };
   }
 
   getAllSessions(): Session[] {

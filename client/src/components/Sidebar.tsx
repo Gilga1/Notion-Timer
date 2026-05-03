@@ -1,5 +1,13 @@
 import { Link, useLocation } from "wouter";
-import { Timer, BarChart3, Settings, Gift, Sun, Moon } from "lucide-react";
+import {
+  Timer,
+  BarChart3,
+  Settings,
+  Gift,
+  Sun,
+  Moon,
+  Utensils,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -10,6 +18,7 @@ interface SidebarProps {
 const NAV = [
   { href: "/", icon: Timer, label: "Focus Timer" },
   { href: "/dashboard", icon: BarChart3, label: "Dashboard" },
+  { href: "/meals", icon: Utensils, label: "Meals" },
   { href: "/rewards", icon: Gift, label: "Rewards" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];

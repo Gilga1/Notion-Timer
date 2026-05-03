@@ -62,4 +62,13 @@ export function registerRewardRoutes(app: Express) {
   app.get("/api/rewards/milestones", (_req, res) => {
     res.json({ milestones: STREAK_MILESTONES });
   });
+
+  // POST /api/rewards/reload — reload rewards from disk
+  app.post("/api/rewards/reload", (_req, res) => {
+    rewardStore.reload();
+    res.json({
+      ok: true,
+      count: rewardStore.getAll().length,
+    });
+  });
 }

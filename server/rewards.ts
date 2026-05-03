@@ -4,6 +4,28 @@ import path from "path";
 import { URLSearchParams } from "url";
 
 const DB_PATH = process.env.REWARDS_DB_PATH ?? path.resolve("rewards.db.json");
+const LOCK_PATH = DB_PATH + ".lock";
+
+function acquireLock(maxAttempts = 50, intervalMs = 50): void {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      fs.writeFileSync(LOCK_PATH, process.pid.toString(), { flag: "wx" });
+      return;
+    } catch (err: any) {
+      if (err.code !== "EEXIST") throw err;
+      try {
+        fs.unlinkSync(LOCK_PATH);
+      } catch {}
+      if (i === maxAttempts - 1) throw new Error("Could not acquire lock");
+    }
+  }
+}
+
+function releaseLock(): void {
+  try {
+    fs.unlinkSync(LOCK_PATH);
+  } catch {}
+}
 
 // â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -78,15 +100,25 @@ function pickCategory(
 // â”€â”€ Persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function loadRewards(): Reward[] {
+  acquireLock();
   try {
-    if (fs.existsSync(DB_PATH))
-      return JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
-  } catch {}
+    if (fs.existsSync(DB_PATH)) {
+      const data = fs.readFileSync(DB_PATH, "utf8");
+      return JSON.parse(data);
+    }
+  } catch {} finally {
+    releaseLock();
+  }
   return [];
 }
 
 function saveRewards(rewards: Reward[]): void {
-  fs.writeFileSync(DB_PATH, JSON.stringify(rewards, null, 2));
+  acquireLock();
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(rewards, null, 2));
+  } finally {
+    releaseLock();
+  }
 }
 
 // â”€â”€ LLM Reward Generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -359,6 +391,10 @@ Respond ONLY with a JSON object (no markdown, no explanation) in this exact shap
 
 export class RewardStore {
   private rewards: Reward[] = loadRewards();
+
+  reload(): void {
+    this.rewards = loadRewards();
+  }
 
   getAll(): Reward[] {
     return [...this.rewards].sort((a, b) =>

@@ -110,7 +110,10 @@ function computeStreak(dates: Set<string>): {
 }
 
 export async function fetchHabitStreaks(): Promise<StreakData[]> {
-  const notion = new Client({ auth: process.env.NOTION_TOKEN });
+  const token = process.env.NOTION_TOKEN;
+  if (!token) throw new Error("NOTION_TOKEN not set");
+  if (token.length < 10) throw new Error("NOTION_TOKEN is invalid");
+  const notion = new Client({ auth: token });
 
   // Fetch last 90 days of habit data
   const since = addDays(getDateStr(new Date().toISOString()), -90);
@@ -186,7 +189,9 @@ export async function fetchHabitStreaks(): Promise<StreakData[]> {
     const habits: Partial<Record<HabitName, boolean>> = {};
     for (const h of TRACKED_HABITS) {
       const val = page.properties?.[h];
-      if (val?.type === "checkbox") habits[h] = val.checkbox === true;
+      if (val && typeof val === "object" && val.type === "checkbox") {
+        habits[h] = val.checkbox === true;
+      }
     }
     const habitsCompletedCount = Object.values(habits).filter(Boolean).length;
     return { date, habits, habitsCompletedCount };

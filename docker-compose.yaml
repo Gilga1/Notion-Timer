@@ -9,9 +9,10 @@ services:
       PORT: "5000"
       SESSION_DB_PATH: "/app/data/focus-timer.db.json"
       REWARDS_DB_PATH: "/app/data/rewards.db.json"
+      PUSH_SUBS_PATH: "/app/data/push-subscriptions.json"
+      TZ: "Asia/Kolkata"
     volumes:
       - focus-timer-data:/app/data
     restart: unless-stopped
-
-volumes:
-  focus-timer-data:
+  volumes:
+    focus-timer-data:

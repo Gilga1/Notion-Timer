@@ -108,19 +108,19 @@ function CelebrationBanner({
   })();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="mx-4 max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden animate-[spring_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">
+      <div className="mx-4 max-w-md w-full bg-card border border-border rounded-3xl shadow-2xl overflow-hidden animate-[spring_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">
         {/* Confetti strip */}
         <div className="h-2 bg-gradient-to-r from-yellow-400 via-pink-400 to-purple-400" />
         <div className="p-8 text-center">
           <div className="mb-4 animate-bounce">
-            <Icon className="w-14 h-14 mx-auto text-gray-900" />
+            <Icon className="w-14 h-14 mx-auto text-foreground" />
           </div>
-          <div className="text-xs font-semibold tracking-widest uppercase text-gray-500 mb-2">
+          <div className="text-xs font-semibold tracking-widest uppercase text-muted-foreground mb-2">
             Reward Unlocked
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">{r.title}</h2>
-          <p className="text-sm text-gray-500 mb-2">{r.description}</p>
-          <p className="text-sm text-gray-400 italic mb-6">{r.why}</p>
+          <h2 className="text-2xl font-bold text-foreground mb-3">{r.title}</h2>
+          <p className="text-sm text-muted-foreground mb-2">{r.description}</p>
+          <p className="text-sm text-muted-foreground italic mb-6">{r.why}</p>
           <div className="flex gap-3 justify-center">
             {rewards.length > 1 && (
               <span className="text-sm text-muted-foreground self-center">
@@ -129,7 +129,7 @@ function CelebrationBanner({
             )}
             <button
               onClick={onDismiss}
-              className="px-6 py-3 bg-stone-100 text-stone-800 rounded-xl font-medium hover:bg-stone-50 transition-colors"
+              className="px-6 py-3 bg-secondary text-foreground rounded-xl font-medium hover:bg-secondary/80 transition-colors"
             >
               Awesome - save for later
             </button>
@@ -156,14 +156,14 @@ function StreakTrack({
   const nextMilestone = MILESTONES.find((m) => m > streak.currentStreak) ?? null;
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-5 transition-colors">
+    <div className="bg-card border border-border rounded-2xl p-5 transition-colors">
       <div className="flex justify-between items-start mb-3">
         <div>
-          <p className="font-semibold text-gray-900 text-sm">{label}</p>
+          <p className="font-semibold text-foreground text-sm">{label}</p>
           {streak.isComposite && (
-            <span className="text-xs text-gray-600 font-medium">Combo streak</span>
+            <span className="text-xs text-muted-foreground font-medium">Combo streak</span>
           )}
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-muted-foreground mt-1">
             {nextMilestone ? `Next reward at ${nextMilestone} days` : "All milestones completed"}
           </div>
         </div>
@@ -176,7 +176,7 @@ function StreakTrack({
       </div>
 
       {/* Progress */}
-      <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div className="relative h-2 bg-secondary rounded-full overflow-hidden">
         <div
           className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-700"
           style={{ width: `${pct}%` }}
@@ -193,10 +193,10 @@ function StreakTrack({
           const pillClass = isClaimed
             ? "bg-emerald-600 text-white"
             : isUnlocked
-              ? "bg-amber-100 text-amber-800"
+              ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
               : isPast
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-stone-100 text-stone-500";
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "bg-secondary text-muted-foreground";
 
           return (
             <span
@@ -257,15 +257,15 @@ function RewardCard({
     <div
       className={`rounded-2xl p-5 transition-all border ${
         reward.status === "unlocked"
-          ? "bg-amber-50 border-amber-100"
-          : "bg-white border-gray-100"
+          ? "bg-yellow-500/10 border-yellow-500/20"
+          : "bg-card border-border"
       }`}
     >
       <div className="flex gap-4">
         <div className="flex-shrink-0">
           <div
             className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-              reward.status === "unlocked" ? "bg-amber-50" : "bg-stone-100"
+              reward.status === "unlocked" ? "bg-yellow-500/20" : "bg-secondary"
             }`}
           >
             {(() => {
@@ -290,7 +290,7 @@ function RewardCard({
               return (
                 <Icon
                   className={`w-5 h-5 ${
-                    reward.status === "unlocked" ? "text-amber-600" : "text-stone-500"
+                    reward.status === "unlocked" ? "text-yellow-500" : "text-muted-foreground"
                   }`} />
               );
             })()}
@@ -298,17 +298,17 @@ function RewardCard({
         </div>
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex items-start justify-between gap-2 mb-1">
-            <h3 className="font-medium text-gray-900 text-sm leading-tight">
+            <h3 className="font-medium text-foreground text-sm leading-tight">
               {reward.title}
             </h3>
-            <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-medium">
+            <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">
               {reward.category}
             </span>
           </div>
-          <p className="text-sm text-gray-500 mb-2 leading-relaxed">
+          <p className="text-sm text-muted-foreground mb-2 leading-relaxed">
             {reward.description}
           </p>
-          <p className="text-xs text-gray-400 italic mb-3">
+          <p className="text-xs text-muted-foreground italic mb-3">
             {HABIT_LABELS[reward.habitKey] ?? reward.habitKey} - {reward.milestoneStreak}-day milestone
           </p>
 
@@ -322,12 +322,12 @@ function RewardCard({
                 <CheckCircle2 className="w-4 h-4" />
                 {claiming ? "Claiming..." : "Claim"}
               </button>
-              <div className="text-xs text-gray-400">
+              <div className="text-xs text-muted-foreground">
                 Unlocked {formatDate(reward.unlockedAt)}
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 mt-auto text-xs text-gray-400">
+            <div className="flex items-center gap-2 mt-auto text-xs text-muted-foreground">
               <Archive className="w-4 h-4" />
               <span>
                 {reward.claimedAt ? `Claimed on ${formatDate(reward.claimedAt)}` : "Claimed"}
@@ -442,23 +442,23 @@ export default function RewardsPage() {
             Earn treats by building consistent habits
           </p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-stone-100 text-stone-800 rounded-xl hover:bg-stone-50 transition-colors disabled:opacity-50"
-        >
-          {syncing ? (
-            <>
-              <span className="w-3.5 h-3.5 border-2 border-stone-300 rounded-full animate-spin" />
-              Checking...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-4 h-4" />
-              <span>Sync streaks</span>
-            </>
-          )}
-        </button>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-colors disabled:opacity-50"
+          >
+            {syncing ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-muted-foreground rounded-full animate-spin" />
+                Checking...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>Sync streaks</span>
+              </>
+            )}
+          </button>
       </div>
 
       {error && (
@@ -477,13 +477,13 @@ export default function RewardsPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
               activeTab === tab
-                ? "border-gray-900 text-foreground"
+                ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {tab}
             {tab === "unlocked" && unlocked.length > 0 && (
-              <span className="ml-1.5 text-xs bg-yellow-400 text-yellow-900 rounded-full px-1.5 py-0.5">
+              <span className="ml-1.5 text-xs bg-yellow-500 text-yellow-900 dark:text-yellow-100 rounded-full px-1.5 py-0.5">
                 {unlocked.length}
               </span>
             )}
@@ -495,9 +495,9 @@ export default function RewardsPage() {
       {activeTab === "streaks" && (
         <div className="space-y-3">
             {streaks.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 text-sm">
+              <div className="text-center py-12 text-muted-foreground text-sm">
                 <div className="mb-3">
-                  <Flame className="w-8 h-8 mx-auto text-stone-600" />
+                  <Flame className="w-8 h-8 mx-auto text-muted-foreground" />
                 </div>
                 <p>
                   No streak data yet. Make sure your Notion Habit Tracker is up to
@@ -523,9 +523,9 @@ export default function RewardsPage() {
       {activeTab === "unlocked" && (
         <div className="space-y-3">
             {unlocked.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 text-sm">
+              <div className="text-center py-12 text-muted-foreground text-sm">
                 <div className="mb-3">
-                  <Gift className="w-8 h-8 mx-auto text-stone-600" />
+                  <Gift className="w-8 h-8 mx-auto text-muted-foreground" />
                 </div>
                 <p>No unclaimed rewards yet.</p>
                 <p className="mt-1">
@@ -535,7 +535,7 @@ export default function RewardsPage() {
                 <button
                   onClick={handleSync}
                   disabled={syncing}
-                  className="mt-4 px-4 py-2 text-sm bg-white border border-gray-100 hover:bg-stone-50 rounded-lg transition-colors disabled:opacity-50"
+                  className="mt-4 px-4 py-2 text-sm bg-secondary border border-border hover:bg-secondary/80 rounded-lg transition-colors disabled:opacity-50"
                 >
                   Sync to check
                 </button>
@@ -557,9 +557,9 @@ export default function RewardsPage() {
       {activeTab === "history" && (
         <div className="space-y-3">
             {claimed.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 text-sm">
+              <div className="text-center py-12 text-muted-foreground text-sm">
                 <div className="mb-3">
-                  <Archive className="w-8 h-8 mx-auto text-stone-600" />
+                  <Archive className="w-8 h-8 mx-auto text-muted-foreground" />
                 </div>
                 <p>
                   No rewards claimed yet. Claim your first reward to see it here.

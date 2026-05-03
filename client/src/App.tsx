@@ -10,6 +10,7 @@ import SettingsPage from "@/pages/settings";
 import RewardsPage from "@/pages/rewards";
 import NotFound from "@/pages/not-found";
 import Sidebar from "@/components/Sidebar";
+import MealsPage from "@/pages/meals";
 
 function AppShell() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -34,6 +35,7 @@ function AppShell() {
           <Route path="/dashboard" component={DashboardPage} />
           <Route path="/settings" component={SettingsPage} />
           <Route path="/rewards" component={RewardsPage} />
+          <Route path="/meals" component={MealsPage} />
           <Route component={NotFound} />
         </Switch>
       </main>
