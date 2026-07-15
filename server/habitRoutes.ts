@@ -17,6 +17,7 @@
 
 import type { Express } from "express";
 import { Client } from "@notionhq/client";
+import { queryNotionCollection } from "./routes";
 
 const HABITS_DB =
   process.env.HABITS_DS ?? "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
@@ -79,8 +80,7 @@ async function findOrCreateTodayPage(notion: Client): Promise<string> {
   const today = getTodayIST();
 
   // Try to find existing page for today
-  const resp = await (notion as any).databases.query({
-    database_id: HABITS_DB,
+  const resp = await queryNotionCollection(notion, HABITS_DB, {
     filter: { property: "Date", date: { equals: today } },
     page_size: 1,
   });

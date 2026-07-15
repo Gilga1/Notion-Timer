@@ -72,8 +72,8 @@ async function queryNotionCollection(
   if (notion?.dataSources && typeof notion.dataSources.query === "function") {
     return notion.dataSources.query({ data_source_id: id, ...queryPayload });
   }
-  if (notion?.databases && typeof notion.databases.query === "function") {
-    return notion.databases.query({ database_id: id, ...queryPayload });
+  if (notion?.databases && typeof (notion as any).databases.query === "function") {
+    return (notion as any).databases.query({ database_id: id, ...queryPayload });
   }
   return notion.request({
     path: `/databases/${id}/query`,

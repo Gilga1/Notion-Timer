@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "wouter";
 import {
   BarChart,
   Bar,
@@ -242,7 +243,7 @@ export default function DashboardPage() {
       .filter((s) => s.startedAt.startsWith(dayStr))
       .reduce((sum, s) => sum + (s.durationMins ?? 0), 0);
     return {
-      day: format(day, "EEE"),
+      day: format(day, chartRange > 7 ? "MMM d" : "EEE"),
       date: dayStr,
       mins: Math.round(dayMins),
       hrs: parseFloat((dayMins / 60).toFixed(2)),
@@ -393,10 +394,15 @@ export default function DashboardPage() {
           <h2 className="text-base font-semibold text-foreground">
             No sessions yet
           </h2>
-          <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">
+          <p className="text-sm text-muted-foreground mt-1.5 max-w-xs mb-6">
             Start a focus session from the Timer tab and your analytics will
             appear here.
           </p>
+          <Link href="/timer">
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
+              Start a Session
+            </Button>
+          </Link>
         </div>
       ) : (
         <>
@@ -691,7 +697,7 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             {/* Project pie */}
-            {pieData.length > 1 && (
+            {pieData.length > 0 && (
               <div className="bg-card border border-border rounded-xl p-6">
                 <h2 className="text-sm font-semibold text-foreground mb-4">
                   By Project
@@ -730,10 +736,10 @@ export default function DashboardPage() {
                   {pieData.slice(0, 4).map((p, i) => (
                     <div
                       key={p.name}
-                      className="flex items-center gap-2 text-xs"
+                      className="flex items-center gap-2 text-xs group cursor-default hover:bg-secondary/50 p-1.5 rounded-lg transition-colors -ml-1.5"
                     >
                       <span
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 transition-transform duration-300 group-hover:scale-125"
                         style={{
                           background: CHART_COLORS[i % CHART_COLORS.length],
                         }}

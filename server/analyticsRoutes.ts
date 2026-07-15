@@ -15,6 +15,7 @@
 import type { Express } from "express";
 import { Client } from "@notionhq/client";
 import { storage } from "./storage";
+import { queryNotionCollection } from "./routes";
 
 const HABITS_DB =
   process.env.HABITS_DS ?? "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
@@ -43,6 +44,27 @@ function getNotion() {
   if (!token || token.length < 10)
     throw new Error("NOTION_TOKEN not set or invalid");
   return new Client({ auth: token });
+}
+
+let cachedHabits: string[] | null = null;
+let lastCacheTime = 0;
+
+async function getHabitsSchema(notion: Client): Promise<string[]> {
+  if (cachedHabits && Date.now() - lastCacheTime < 5 * 60 * 1000) {
+    return cachedHabits;
+  }
+  try {
+    const db = await (notion as any).databases.retrieve({ database_id: HABITS_DB });
+    const habits = Object.entries(db.properties)
+      .filter(([_, prop]: [string, any]) => prop.type === "checkbox")
+      .map(([name]) => name);
+    cachedHabits = habits.sort();
+    lastCacheTime = Date.now();
+    return cachedHabits;
+  } catch (err) {
+    console.error("Failed to fetch habit schema, falling back to static", err);
+    return ALL_HABITS;
+  }
 }
 
 function getTodayIST(): string {
@@ -77,14 +99,10 @@ async function fetchHabitPages(notion: Client, days: number) {
       filter: { property: "Date", date: { on_or_after: since } },
       sorts: [{ property: "Date", direction: "ascending" }],
       page_size: 100,
+      start_cursor: cursor,
     };
-    if (cursor) payload.start_cursor = cursor;
 
-    const resp = await (notion as any).databases.query({
-      database_id: HABITS_DB,
-      ...payload,
-    });
-
+    const resp = await queryNotionCollection(notion, HABITS_DB, payload);
     results = results.concat(resp.results);
     cursor = resp.has_more ? resp.next_cursor : undefined;
   } while (cursor);
@@ -171,6 +189,7 @@ export function registerAnalyticsRoutes(app: Express) {
     try {
       const days = parseDays(req.query);
       const notion = getNotion();
+      const dynamicHabits = await getHabitsSchema(notion);
       const pages = await fetchHabitPages(notion, days);
 
       // Build daily matrix
@@ -180,18 +199,18 @@ export function registerAnalyticsRoutes(app: Express) {
           const habits: Record<string, boolean> = {};
           let doneCount = 0;
 
-          for (const h of ALL_HABITS) {
+          for (const h of dynamicHabits) {
             const val = page.properties?.[h]?.checkbox === true;
             habits[h] = val;
             if (val) doneCount++;
           }
 
-          return { date, habits, doneCount, totalHabits: ALL_HABITS.length };
+          return { date, habits, doneCount, totalHabits: dynamicHabits.length };
         })
         .filter((d) => d.date);
 
       // Per-habit compliance
-      const compliance = ALL_HABITS.map((habit) => {
+      const compliance = dynamicHabits.map((habit) => {
         const done = daily.filter((d) => d.habits[habit]).length;
         const total = daily.length;
         return {
@@ -221,7 +240,7 @@ export function registerAnalyticsRoutes(app: Express) {
           avgCompletion: Math.round((sum / total) * 100),
         }));
 
-      res.json({ daily, compliance, weeklyAvg, habits: ALL_HABITS });
+      res.json({ daily, compliance, weeklyAvg, habits: dynamicHabits });
     } catch (e: any) {
       console.error("analytics/habits error:", e.message);
       res.status(500).json({ error: e.message });
@@ -306,11 +325,11 @@ export function registerAnalyticsRoutes(app: Express) {
   app.get("/api/analytics/summary", async (_req, res) => {
     try {
       const notion = getNotion();
+      const dynamicHabits = await getHabitsSchema(notion);
 
       // Today's page
       const today = getTodayIST();
-      const resp = await (notion as any).databases.query({
-        database_id: HABITS_DB,
+      const resp = await queryNotionCollection(notion, HABITS_DB, {
         filter: { property: "Date", date: { equals: today } },
         page_size: 1,
       });
@@ -320,7 +339,7 @@ export function registerAnalyticsRoutes(app: Express) {
       const habits: Record<string, boolean> = {};
       let habitsDone = 0;
       if (page) {
-        for (const h of ALL_HABITS) {
+        for (const h of dynamicHabits) {
           const val = page.properties?.[h]?.checkbox === true;
           habits[h] = val;
           if (val) habitsDone++;
@@ -330,7 +349,7 @@ export function registerAnalyticsRoutes(app: Express) {
       // Last 7 days streak compliance (quick)
       const recentPages = await fetchHabitPages(notion, 7);
       const streak7: Record<string, number> = {};
-      for (const h of ALL_HABITS) {
+      for (const h of dynamicHabits) {
         streak7[h] = recentPages.filter(
           (p: any) => p.properties?.[h]?.checkbox === true,
         ).length;
@@ -347,9 +366,10 @@ export function registerAnalyticsRoutes(app: Express) {
 
       res.json({
         date: today,
+        habitList: dynamicHabits,
         habits,
         habitsDone,
-        habitsTotal: ALL_HABITS.length,
+        habitsTotal: dynamicHabits.length,
         macros: {
           calories: page?.properties?.["Calories"]?.number ?? 0,
           protein_g: page?.properties?.["Protein (g)"]?.number ?? 0,
@@ -362,6 +382,7 @@ export function registerAnalyticsRoutes(app: Express) {
           activeSession,
         },
         streak7,
+        todayMeals: (await import("./mealStorage")).mealStorage.getTodayMeals(),
       });
     } catch (e: any) {
       console.error("analytics/summary error:", e.message);

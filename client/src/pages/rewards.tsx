@@ -178,7 +178,7 @@ function StreakTrack({
       {/* Progress */}
       <div className="relative h-2 bg-secondary rounded-full overflow-hidden">
         <div
-          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-700"
+          className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-700"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -191,11 +191,11 @@ function StreakTrack({
           const isPast = streak.currentStreak >= m;
 
           const pillClass = isClaimed
-            ? "bg-emerald-600 text-white"
+            ? "bg-primary text-primary-foreground"
             : isUnlocked
               ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
               : isPast
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                ? "bg-primary/10 text-primary"
                 : "bg-secondary text-muted-foreground";
 
           return (
@@ -317,7 +317,7 @@ function RewardCard({
               <button
                 onClick={handleClaim}
                 disabled={claiming}
-                className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 {claiming ? "Claiming..." : "Claim"}

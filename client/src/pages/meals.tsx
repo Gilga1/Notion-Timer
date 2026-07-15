@@ -159,7 +159,7 @@ function MacroBar({
 
 function ConfidenceBadge({ level, note }: { level: string; note: string }) {
   const styles: Record<string, string> = {
-    high: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50",
+    high: "bg-primary/10 text-primary border-primary/20 dark:bg-primary/20 dark:text-primary dark:border-primary/50",
     medium:
       "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50",
     low: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800/50",
@@ -290,11 +290,11 @@ export default function MealPage() {
             </span>
             {todayMacros.calorieDelta !== null && (
               <span
-                className={`text-xs font-medium ${
-                  todayMacros.calorieDelta <= 0
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-amber-600 dark:text-amber-400"
-                }`}
+                  className={`text-sm font-semibold mt-1 ${
+                    todayMacros.calorieDelta <= 0
+                    ? "text-primary dark:text-primary"
+                    : "text-red-600 dark:text-red-400"
+                  }`}
               >
                 {todayMacros.calorieDelta >= 0 ? "+" : ""}
                 {todayMacros.calorieDelta} kcal delta
@@ -368,8 +368,8 @@ export default function MealPage() {
               onClick={() => setMealType(type)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 mealType === type
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
               }`}
             >
               {type}
@@ -380,7 +380,7 @@ export default function MealPage() {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Note (optional)…"
-          className="flex-1 min-w-[120px] bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 outline-none focus:border-zinc-500"
+          className="flex-1 min-w-[120px] bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
         />
       </div>
 
@@ -405,7 +405,7 @@ export default function MealPage() {
             <p className="text-sm font-medium text-foreground">
               Take a photo or upload
             </p>
-            <p className="text-xs text-zinc-500 mt-1">JPEG · PNG · HEIC</p>
+            <p className="text-xs text-muted-foreground mt-1">JPEG · PNG · HEIC</p>
           </div>
         </button>
       )}
@@ -416,7 +416,7 @@ export default function MealPage() {
           <img
             src={imageUrl}
             alt="Meal"
-            className="w-full rounded-2xl max-h-64 object-cover border border-zinc-800"
+            className="w-full rounded-2xl max-h-64 object-cover border border-border"
           />
           {!analyzing && (
             <button
@@ -425,7 +425,7 @@ export default function MealPage() {
                 setAnalysis(null);
                 setStatus(null);
               }}
-              className="mt-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               ← Retake
             </button>
@@ -446,7 +446,7 @@ export default function MealPage() {
         <div
           className={`p-3 rounded-xl text-sm mb-4 ${
             status.type === "success"
-              ? "bg-card border border-border border-l-4 border-l-emerald-500 text-foreground"
+              ? "bg-card border border-border border-l-4 border-l-primary text-foreground"
               : status.type === "error"
                 ? "bg-card border border-border border-l-4 border-l-red-500 text-foreground"
                 : "bg-card border border-border text-foreground"
@@ -477,36 +477,47 @@ export default function MealPage() {
                 {
                   label: "Calories",
                   value: analysis.calories,
+                  key: "calories" as const,
                   unit: "kcal",
                   color: "#e09c40",
                 },
                 {
                   label: "Protein",
                   value: analysis.protein_g,
+                  key: "protein_g" as const,
                   unit: "g",
                   color: "#5b9bd5",
                 },
                 {
                   label: "Carbs",
                   value: analysis.carbs_g,
+                  key: "carbs_g" as const,
                   unit: "g",
                   color: "#4caf7d",
                 },
                 {
                   label: "Fat",
                   value: analysis.fat_g,
+                  key: "fat_g" as const,
                   unit: "g",
                   color: "#9b8fdd",
                 },
-              ].map(({ label, value, unit, color }) => (
+              ].map(({ label, value, key, unit, color }) => (
                 <div
                   key={label}
-                  className="bg-muted/40 border border-border rounded-xl p-3 text-center"
+                  className="bg-muted/40 border border-border rounded-xl p-2 text-center flex flex-col items-center justify-between"
                 >
-                  <div className="text-base font-bold" style={{ color }}>
-                    {Math.round(value)}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">{unit}</div>
+                  <input
+                    type="number"
+                    value={value === undefined || value === null ? "" : Math.round(value)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setAnalysis((prev) => prev ? { ...prev, [key]: val } : null);
+                    }}
+                    className="w-full text-base font-bold text-center bg-transparent border-b border-border/40 focus:border-primary outline-none pb-0.5"
+                    style={{ color }}
+                  />
+                  <div className="text-[10px] text-muted-foreground mt-1">{unit}</div>
                   <div className="text-[9px] text-muted-foreground/70">{label}</div>
                 </div>
               ))}
@@ -565,7 +576,7 @@ export default function MealPage() {
             <button
               onClick={handleLog}
               disabled={logging}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-xl transition-colors"
             >
               {logging ? (
                 <>
@@ -578,7 +589,7 @@ export default function MealPage() {
             </button>
             <button
               onClick={() => fileRef.current?.click()}
-              className="px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-xl transition-colors"
+              className="px-4 py-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm rounded-xl transition-colors"
             >
               Next meal
             </button>
@@ -588,8 +599,8 @@ export default function MealPage() {
 
       {/* Meals logged this session */}
       {loggedMeals.length > 0 && (
-        <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl">
-          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
+        <div className="p-4 bg-card border border-border rounded-2xl">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
             Logged this session
           </p>
           <div className="space-y-2">
@@ -599,16 +610,16 @@ export default function MealPage() {
                 className="flex justify-between items-center text-sm"
               >
                 <div>
-                  <span className="text-zinc-300 font-medium">{m.type}</span>
-                  <span className="text-zinc-500 text-xs"> · {m.name}</span>
+                  <span className="text-foreground font-medium">{m.type}</span>
+                  <span className="text-muted-foreground text-xs"> · {m.name}</span>
                 </div>
                 <span className="text-amber-400 font-medium text-xs">
                   {m.calories} kcal
                 </span>
               </div>
             ))}
-            <div className="border-t border-zinc-800 pt-2 flex justify-between text-xs font-medium">
-              <span className="text-zinc-400">Session total</span>
+            <div className="border-t border-border pt-2 flex justify-between text-xs font-medium">
+              <span className="text-muted-foreground">Session total</span>
               <span className="text-amber-400">
                 {loggedMeals.reduce((s, m) => s + m.calories, 0)} kcal
               </span>

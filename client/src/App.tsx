@@ -11,6 +11,7 @@ import RewardsPage from "@/pages/rewards";
 import NotFound from "@/pages/not-found";
 import Sidebar from "@/components/Sidebar";
 import MealsPage from "@/pages/meals";
+import TodayPage from "@/pages/today";
 
 function AppShell() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -31,7 +32,8 @@ function AppShell() {
       />
       <main className="flex-1 overflow-y-auto">
         <Switch>
-          <Route path="/" component={TimerPage} />
+          <Route path="/" component={TodayPage} />
+          <Route path="/timer" component={TimerPage} />
           <Route path="/dashboard" component={DashboardPage} />
           <Route path="/settings" component={SettingsPage} />
           <Route path="/rewards" component={RewardsPage} />

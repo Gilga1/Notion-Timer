@@ -62,7 +62,6 @@
   --card-foreground: var(--text);
   --popover: var(--surface);
   --popover-foreground: var(--text);
-  --primary: var(--primary);
   --primary-foreground: var(--primary-fg);
   --secondary: var(--surface-2);
   --secondary-foreground: var(--text);
@@ -72,7 +71,6 @@
   --accent-foreground: var(--text);
   --destructive: var(--error);
   --destructive-foreground: 0 0% 100%;
-  --border: var(--border);
   --input: var(--border);
   --ring: var(--primary);
   --radius: var(--radius-md);
@@ -105,7 +103,6 @@
   --card-foreground: var(--text);
   --popover: var(--surface);
   --popover-foreground: var(--text);
-  --primary: var(--primary);
   --primary-foreground: var(--primary-fg);
   --secondary: var(--surface-2);
   --secondary-foreground: var(--text);
@@ -115,7 +112,6 @@
   --accent-foreground: var(--text);
   --destructive: var(--error);
   --destructive-foreground: 0 0% 100%;
-  --border: var(--border);
   --input: var(--border);
   --ring: var(--primary);
   --radius: var(--radius-md);
@@ -154,7 +150,6 @@
     --accent-foreground: var(--text);
     --destructive: var(--error);
     --destructive-foreground: 0 0% 100%;
-    --border: var(--border);
     --input: var(--border);
     --ring: var(--primary);
     --radius: var(--radius-md);

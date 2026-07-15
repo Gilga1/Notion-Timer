@@ -810,12 +810,10 @@ export default function TimerPage() {
                     )}
                   >
                     <div>
-                      <div className="font-medium">{t.name}</div>
-                      {t.status && (
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {t.status}
-                        </div>
-                      )}
+                      <div className="font-medium text-foreground">{t.name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {t.status ? `${t.status} • ` : ""}{selectedProject?.name}
+                      </div>
                     </div>
                     {(t.timeSpentMins ?? 0) > 0 && (
                       <span className="text-xs font-mono text-muted-foreground ml-2">
@@ -831,7 +829,14 @@ export default function TimerPage() {
       </div>
 
       {/* Mode toggle */}
-      <div className="flex items-center gap-1 bg-secondary rounded-xl p-1 mb-8 w-fit mx-auto">
+      <div className="relative flex items-center bg-secondary rounded-xl p-1 mb-8 w-fit mx-auto">
+        <div 
+          className="absolute inset-y-1 bg-card rounded-lg shadow-sm transition-all duration-300 ease-out border border-border/50"
+          style={{
+            width: 'calc(50% - 4px)',
+            left: mode === 'stopwatch' ? '4px' : 'calc(50%)',
+          }}
+        />
         {(["stopwatch", "pomodoro"] as Mode[]).map((m) => (
           <button
             key={m}
@@ -842,9 +847,9 @@ export default function TimerPage() {
               setMode(m);
             }}
             className={cn(
-              "px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize",
+              "relative z-10 px-8 py-2.5 rounded-lg text-sm font-medium transition-colors capitalize",
               mode === m
-                ? "bg-card shadow-sm text-foreground"
+                ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -873,8 +878,8 @@ export default function TimerPage() {
               <button
                 data-testid="btn-start"
                 onClick={handleStart}
-                disabled={startMutation.isPending}
-                className="flex items-center gap-2 px-8 py-3 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50"
+                disabled={startMutation.isPending || !selectedTask}
+                className="flex items-center gap-2 px-8 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50"
               >
                 <Play className="w-4 h-4" />
                 Start

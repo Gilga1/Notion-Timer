@@ -54,6 +54,10 @@ export interface StreakData {
 }
 
 function getDateStr(isoStr: string): string {
+  // If already in YYYY-MM-DD format, return as-is to avoid timezone shifts
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoStr)) {
+    return isoStr;
+  }
   // Returns YYYY-MM-DD in Asia/Kolkata
   const dt = new Date(isoStr);
   const parts = new Intl.DateTimeFormat("en-CA", {

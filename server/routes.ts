@@ -23,7 +23,7 @@ import { registerRewardRoutes } from "./rewardRoutes";
 const PROJECTS_DS = process.env.PROJECTS_DS; // Projects collection
 const TASKS_DS = process.env.TASKS_DS; // Tasks collection
 const NUTRITION_DS = process.env.NUTRITION_DS;
-const HABITS_DS = process.env.HABITS_DS;
+const HABITS_DS = process.env.HABITS_DS || "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
 const APP_API_KEY = process.env.APP_API_KEY;
 const DEFAULT_MAINTENANCE_CALORIES = Number(
   process.env.MAINTENANCE_CALORIES ?? 2400,
@@ -53,7 +53,7 @@ function ensureAppKey(req: any, res: any, next: any) {
   }
   next();
 }
-async function queryNotionCollection(
+export async function queryNotionCollection(
   notion: any,
   id: string,
   queryPayload: any,
@@ -175,7 +175,7 @@ Use one best estimate, not ranges.
 `;
 
   const response = await client.responses.create({
-    model: "gpt-4.1-mini",
+    model: "gpt-4o-mini",
     input: [
       {
         role: "user",
@@ -338,6 +338,36 @@ export function registerRoutes(httpServer: Server, app: Express) {
           });
           storage.markSynced(id);
           session.syncedToNotion = true;
+
+          // Also sync total deep work to today's Habit tracker
+          try {
+            if (HABITS_DS) {
+              const today = new Intl.DateTimeFormat("en-CA", {
+                timeZone: "Asia/Kolkata",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              }).format(new Date());
+
+              const todayHabit = await queryNotionCollection(notion as any, HABITS_DS, {
+                filter: { property: "Date", date: { equals: today } },
+                page_size: 1,
+              });
+
+              if (todayHabit.results.length > 0) {
+                const habitPage = todayHabit.results[0];
+                const existingDeepWork = (habitPage as any).properties?.["Deep Work (mins)"]?.number ?? 0;
+                await notion.pages.update({
+                  page_id: habitPage.id,
+                  properties: {
+                    "Deep Work (mins)": { number: existingDeepWork + durationMins },
+                  },
+                });
+              }
+            }
+          } catch (habitSyncErr) {
+            console.error("Failed to sync deep work to Habits DB:", habitSyncErr);
+          }
         } catch (syncErr: any) {
           syncFailed = true;
           syncError = syncErr.message ?? String(syncErr);
