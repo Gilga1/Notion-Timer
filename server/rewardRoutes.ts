@@ -1,22 +1,9 @@
-/**
- * REWARD ROUTES — add these to your registerRoutes() function in routes.ts
- *
- * Usage in routes.ts:
- *   import { registerRewardRoutes } from "./rewardRoutes";
- *   // at the end of registerRoutes():
- *   registerRewardRoutes(app);
- *
- * Also add to your .env:
- *   OPENAI_API_KEY=sk-... (or set in your environment)
- *   HABITS_DS=bd13c6c6-ca63-4ac6-8d55-75ac013b278b   (already in your Notion)
- */
-
 import type { Express } from "express";
 import { fetchHabitStreaks } from "./habits";
 import { rewardStore, STREAK_MILESTONES } from "./rewards";
+import { ensureAppKey } from "./notionShared";
 
 export function registerRewardRoutes(app: Express) {
-  // ── GET /api/habits/streaks — fetch current streaks from Notion ─────────────
   app.get("/api/habits/streaks", async (_req, res) => {
     try {
       const streaks = await fetchHabitStreaks();
@@ -27,9 +14,7 @@ export function registerRewardRoutes(app: Express) {
     }
   });
 
-  // ── POST /api/rewards/sync — check streaks and generate any new rewards ──────
-  // Call this once on app load and periodically (e.g. daily cron or on page open)
-  app.post("/api/rewards/sync", async (_req, res) => {
+  app.post("/api/rewards/sync", ensureAppKey, async (_req, res) => {
     try {
       const streaks = await fetchHabitStreaks();
       const newRewards = await rewardStore.syncWithStreaks(streaks);
@@ -40,7 +25,6 @@ export function registerRewardRoutes(app: Express) {
     }
   });
 
-  // ── GET /api/rewards — all rewards (unlocked + claimed) ─────────────────────
   app.get("/api/rewards", (_req, res) => {
     res.json({
       unlocked: rewardStore.getUnlocked(),
@@ -48,9 +32,9 @@ export function registerRewardRoutes(app: Express) {
     });
   });
 
-  // ── POST /api/rewards/:id/claim — mark a reward as claimed ──────────────────
-  app.post("/api/rewards/:id/claim", (req, res) => {
-    const reward = rewardStore.claimReward(req.params.id);
+  app.post("/api/rewards/:id/claim", ensureAppKey, (req, res) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const reward = rewardStore.claimReward(String(id ?? ""));
     if (!reward)
       return res
         .status(404)
@@ -58,13 +42,11 @@ export function registerRewardRoutes(app: Express) {
     res.json(reward);
   });
 
-  // ── GET /api/rewards/milestones — metadata for progress track UI ─────────────
   app.get("/api/rewards/milestones", (_req, res) => {
     res.json({ milestones: STREAK_MILESTONES });
   });
 
-  // POST /api/rewards/reload — reload rewards from disk
-  app.post("/api/rewards/reload", (_req, res) => {
+  app.post("/api/rewards/reload", ensureAppKey, (_req, res) => {
     rewardStore.reload();
     res.json({
       ok: true,

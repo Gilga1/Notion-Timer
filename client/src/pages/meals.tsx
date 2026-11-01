@@ -1,12 +1,8 @@
 /**
- * client/src/pages/meal.tsx
+ * client/src/pages/meals.tsx
  *
  * Meal photo -> GPT-4o Vision -> macro breakdown -> sync to Notion.
  * All API calls go through your own backend — OpenAI key stays in .env.
- *
- * Add to router:
- *   import MealPage from "./pages/meal";
- *   <Route path="/meal" component={MealPage} />
  */
 
 import { useState, useRef, useCallback } from "react";
@@ -176,13 +172,19 @@ function ConfidenceBadge({ level, note }: { level: string; note: string }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snack", "Pre-workout"];
+const MEAL_TYPES = [
+  { value: "breakfast", label: "Breakfast" },
+  { value: "lunch", label: "Lunch" },
+  { value: "dinner", label: "Dinner" },
+  { value: "snack", label: "Snack" },
+  { value: "pre-workout", label: "Pre-workout" },
+] as const;
 
 export default function MealPage() {
   const qc = useQueryClient();
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [mealType, setMealType] = useState("Lunch");
+  const [mealType, setMealType] = useState<string>("lunch");
   const [note, setNote] = useState("");
   const [analysis, setAnalysis] = useState<MealAnalysis | null>(null);
   const [loggedMeals, setLoggedMeals] = useState<LoggedMeal[]>([]);
@@ -364,15 +366,15 @@ export default function MealPage() {
         <div className="flex gap-1 flex-wrap">
           {MEAL_TYPES.map((type) => (
             <button
-              key={type}
-              onClick={() => setMealType(type)}
+              key={type.value}
+              onClick={() => setMealType(type.value)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                mealType === type
+                mealType === type.value
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
               }`}
             >
-              {type}
+              {type.label}
             </button>
           ))}
         </div>
@@ -462,7 +464,7 @@ export default function MealPage() {
           <div className="p-5 bg-card border border-border rounded-xl">
             <div className="flex items-start justify-between gap-2 mb-3">
               <h3 className="text-sm font-semibold text-foreground">
-                {mealType}
+                {MEAL_TYPES.find((t) => t.value === mealType)?.label ?? mealType}
                 {note ? ` · ${note}` : ""} — {analysis.meal_name}
               </h3>
               <ConfidenceBadge

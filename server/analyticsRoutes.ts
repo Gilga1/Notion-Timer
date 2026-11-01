@@ -15,11 +15,14 @@
 import type { Express } from "express";
 import { Client } from "@notionhq/client";
 import { storage } from "./storage";
-import { queryNotionCollection } from "./routes";
-
-const HABITS_DB =
-  process.env.HABITS_DS ?? "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
-const MAINTENANCE = 2150;
+import {
+  HABITS_DS as HABITS_DB,
+  MAINTENANCE_CALORIES as MAINTENANCE,
+  getDateInIST,
+  getTodayIST,
+  queryNotionCollection,
+  extractHabitMacros,
+} from "./notionShared";
 
 const ALL_HABITS = [
   "Thyroid Med",
@@ -65,15 +68,6 @@ async function getHabitsSchema(notion: Client): Promise<string[]> {
     console.error("Failed to fetch habit schema, falling back to static", err);
     return ALL_HABITS;
   }
-}
-
-function getTodayIST(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
 }
 
 function addDays(dateStr: string, n: number): string {
@@ -122,14 +116,18 @@ export function registerAnalyticsRoutes(app: Express) {
       const series = pages
         .map((page: any) => {
           const date = page.properties?.Date?.date?.start?.slice(0, 10) ?? "";
-          const calories = page.properties?.["Calories"]?.number ?? null;
-          const protein = page.properties?.["Protein (g)"]?.number ?? null;
-          const delta = page.properties?.["Calorie Delta"]?.number ?? null;
+          const macros = extractHabitMacros(page);
           const gymDone = page.properties?.["Gym"]?.checkbox === true;
 
-          return { date, calories, protein, delta, gymDone };
+          return {
+            date,
+            calories: macros.calories,
+            protein: macros.proteinG,
+            delta: macros.calorieDelta,
+            gymDone,
+          };
         })
-        .filter((d) => d.date); // drop entries without a date
+        .filter((d) => d.date);
 
       // Summary stats
       const withCalories = series.filter(
@@ -157,7 +155,7 @@ export function registerAnalyticsRoutes(app: Express) {
 
       // Days where calorie target was hit (within ±150 kcal of gym/rest target)
       const targetHits = withCalories.filter((d) => {
-        const target = d.gymDone ? 2150 : MAINTENANCE;
+        const target = MAINTENANCE;
         return d.calories !== null && Math.abs(d.calories - target) <= 150;
       }).length;
 
@@ -175,7 +173,7 @@ export function registerAnalyticsRoutes(app: Express) {
             : null,
           maintenance: MAINTENANCE,
         },
-        targets: { gymDay: 2150, restDay: MAINTENANCE, protein: 150 },
+        targets: { gymDay: MAINTENANCE, restDay: MAINTENANCE, protein: 150 },
       });
     } catch (e: any) {
       console.error("analytics/macros error:", e.message);
@@ -254,7 +252,9 @@ export function registerAnalyticsRoutes(app: Express) {
       const days = parseDays(req.query);
       const cutoff = addDays(getTodayIST(), -days);
       const sessions = storage.getAllSessions().filter((s) => {
-        return s.startedAt >= cutoff && s.durationMins != null;
+        if (s.durationMins == null) return false;
+        const day = getDateInIST(s.startedAt);
+        return day >= cutoff;
       });
 
       // Per-project totals
@@ -282,10 +282,10 @@ export function registerAnalyticsRoutes(app: Express) {
         }))
         .sort((a, b) => b.totalMins - a.totalMins);
 
-      // Daily totals (for bar chart)
+      // Daily totals (for bar chart) — bucket by IST calendar day
       const byDay: Record<string, number> = {};
       for (const s of sessions) {
-        const day = s.startedAt.slice(0, 10);
+        const day = getDateInIST(s.startedAt);
         byDay[day] = (byDay[day] ?? 0) + (s.durationMins ?? 0);
       }
       const dailyHours = Object.entries(byDay)
@@ -370,12 +370,19 @@ export function registerAnalyticsRoutes(app: Express) {
         habits,
         habitsDone,
         habitsTotal: dynamicHabits.length,
-        macros: {
-          calories: page?.properties?.["Calories"]?.number ?? 0,
-          protein_g: page?.properties?.["Protein (g)"]?.number ?? 0,
-          calorieDelta: page?.properties?.["Calorie Delta"]?.number ?? null,
+        macros: (() => {
+          const m = extractHabitMacros(page);
+          return {
+            calories: m.calories ?? 0,
+            protein_g: m.proteinG ?? 0,
+            calorieDelta: m.calorieDelta,
+          };
+        })(),
+        targets: {
+          calories: MAINTENANCE,
+          maintenance: MAINTENANCE,
+          protein: 150,
         },
-        targets: { calories: 2150, maintenance: MAINTENANCE, protein: 150 },
         deepWork: {
           todayMins,
           todayHours: parseFloat((todayMins / 60).toFixed(1)),

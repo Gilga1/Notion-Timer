@@ -1,7 +1,8 @@
 import { Client } from "@notionhq/client";
 
-const HABITS_DS =
-  process.env.HABITS_DS || "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
+import { HABITS_DS as HABITS_DS_ENV } from "./notionShared";
+
+const HABITS_DS = HABITS_DS_ENV;
 
 // Habits we track streaks for (matches your Notion schema exactly)
 export const TRACKED_HABITS = [

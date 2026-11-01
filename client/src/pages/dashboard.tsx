@@ -15,13 +15,7 @@ import {
   Line,
   CartesianGrid,
 } from "recharts";
-import {
-  format,
-  parseISO,
-  startOfDay,
-  subDays,
-  eachDayOfInterval,
-} from "date-fns";
+import { format, parseISO, subDays, eachDayOfInterval } from "date-fns";
 import {
   BarChart3,
   Clock,
@@ -222,10 +216,17 @@ export default function DashboardPage() {
 
   const completedSessions = sessions.filter((s) => s.durationMins != null);
 
-  // ── Today stats ──────────────────────────────────────────────────────────
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  const todaySessions = completedSessions.filter((s) =>
-    s.startedAt.startsWith(todayStr),
+  // ── Today stats (IST calendar day) ───────────────────────────────────────
+  const toIstDate = (iso: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  const todayStr = toIstDate(new Date().toISOString());
+  const todaySessions = completedSessions.filter(
+    (s) => toIstDate(s.startedAt) === todayStr,
   );
   const todayMins = todaySessions.reduce(
     (sum, s) => sum + (s.durationMins ?? 0),
@@ -240,7 +241,7 @@ export default function DashboardPage() {
   const dailyData = lastDays.map((day) => {
     const dayStr = format(day, "yyyy-MM-dd");
     const dayMins = completedSessions
-      .filter((s) => s.startedAt.startsWith(dayStr))
+      .filter((s) => toIstDate(s.startedAt) === dayStr)
       .reduce((sum, s) => sum + (s.durationMins ?? 0), 0);
     return {
       day: format(day, chartRange > 7 ? "MMM d" : "EEE"),
@@ -417,7 +418,7 @@ export default function DashboardPage() {
             />
             <StatCard
               icon={TrendingUp}
-              label="This Week"
+              label={`Last ${chartRange} Days`}
               value={fmtMins(weekTotalMins)}
               sub={`avg ${fmtMins(avgDailyMins)}/day`}
               color="bg-green-500/10 text-green-500"
@@ -647,7 +648,9 @@ export default function DashboardPage() {
               </h2>
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                 <span>Days logged</span>
-                <span>{activeDays}/7</span>
+                <span>
+                  {activeDays}/{chartRange}
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                 <span>Current streak</span>

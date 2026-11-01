@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { InsertMeal, Meal, DailyNutritionSummary } from "@shared/schema";
+import { withFileLock } from "./fileLock";
 
 const DB_PATH = process.env.MEALS_DB_PATH ?? path.resolve("meals.db.json");
 const LOCK_PATH = DB_PATH + ".lock";
@@ -10,7 +11,7 @@ interface MealRow {
   id: number;
   taken_at: string;
   source: "manual" | "photo-ai";
-  meal_type: "breakfast" | "lunch" | "dinner" | "snack";
+  meal_type: "breakfast" | "lunch" | "dinner" | "snack" | "pre-workout";
   title: string;
   notes: string | null;
   photo_url: string | null;
@@ -24,47 +25,21 @@ interface MealRow {
   notion_page_id: string | null;
 }
 
-function acquireLock(maxAttempts = 50): void {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      fs.writeFileSync(LOCK_PATH, process.pid.toString(), { flag: "wx" });
-      return;
-    } catch (err: any) {
-      if (err.code !== "EEXIST") throw err;
-      try {
-        fs.unlinkSync(LOCK_PATH);
-      } catch {}
-      if (i === maxAttempts - 1) throw new Error("Could not acquire meal lock");
-    }
-  }
-}
-
-function releaseLock(): void {
-  try {
-    fs.unlinkSync(LOCK_PATH);
-  } catch {}
-}
-
 function load(): MealRow[] {
-  acquireLock();
-  try {
-    if (fs.existsSync(DB_PATH)) {
-      return JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
-    }
-  } catch {
-  } finally {
-    releaseLock();
-  }
-  return [];
+  return withFileLock(LOCK_PATH, () => {
+    try {
+      if (fs.existsSync(DB_PATH)) {
+        return JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
+      }
+    } catch {}
+    return [];
+  });
 }
 
 function save(rows: MealRow[]) {
-  acquireLock();
-  try {
+  withFileLock(LOCK_PATH, () => {
     fs.writeFileSync(DB_PATH, JSON.stringify(rows, null, 2));
-  } finally {
-    releaseLock();
-  }
+  });
 }
 
 function getDateInTimeZone(iso: string, timeZone: string) {

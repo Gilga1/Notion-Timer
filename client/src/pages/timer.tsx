@@ -173,6 +173,28 @@ export default function TimerPage() {
   const [projectOpen, setProjectOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
 
+  useEffect(() => {
+    if (!projectOpen && !taskOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setProjectOpen(false);
+        setTaskOpen(false);
+      }
+    };
+    const onPointer = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("[data-selector-dropdown]")) return;
+      setProjectOpen(false);
+      setTaskOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointer);
+    };
+  }, [projectOpen, taskOpen]);
+
   // ── Stopwatch state ────────────────────────────────────────────────────────
   const [isRunning, setIsRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0); // seconds
@@ -200,15 +222,21 @@ export default function TimerPage() {
   const isWorkCycle = currentCycle.type === "work";
 
   // ── Fetch projects ─────────────────────────────────────────────────────────
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<
-    NotionProject[]
-  >({
+  const {
+    data: projects = [],
+    isLoading: projectsLoading,
+    isError: projectsError,
+  } = useQuery<NotionProject[]>({
     queryKey: ["/api/projects"],
     staleTime: 5 * 60 * 1000,
   });
 
   // ── Fetch tasks ────────────────────────────────────────────────────────────
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery<NotionTask[]>({
+  const {
+    data: tasks = [],
+    isLoading: tasksLoading,
+    isError: tasksError,
+  } = useQuery<NotionTask[]>({
     queryKey: ["/api/tasks", selectedProject?.id],
     enabled: !!selectedProject,
     staleTime: 2 * 60 * 1000,
@@ -257,9 +285,21 @@ export default function TimerPage() {
         saved.selectedTask ? ({ ...saved.selectedTask } as NotionTask) : null,
       );
       setCycleIdx(saved.cycleIdx);
-      setPomodoroRunning(saved.pomodoroRunning);
-      setPomodoroRemaining(saved.pomodoroRemaining);
-      setPomodoroEndAtMs(saved.pomodoroEndAtMs);
+
+      // Expired pomodoro: stop without auto-advancing / auto-starting a new session
+      const expired =
+        !!saved.pomodoroRunning &&
+        !!saved.pomodoroEndAtMs &&
+        saved.pomodoroEndAtMs <= Date.now();
+      if (expired) {
+        setPomodoroRunning(false);
+        setPomodoroRemaining(0);
+        setPomodoroEndAtMs(null);
+      } else {
+        setPomodoroRunning(saved.pomodoroRunning);
+        setPomodoroRemaining(saved.pomodoroRemaining);
+        setPomodoroEndAtMs(saved.pomodoroEndAtMs);
+      }
     }
 
     (async () => {
@@ -304,8 +344,9 @@ export default function TimerPage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // â”€â”€ Persist state (prevents timer reset across tabs/navigation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Persist state after restore — skip first paint defaults so we don't wipe storage
   useEffect(() => {
+    if (!restoredRef.current) return;
     savePersistedState({
       mode,
       isRunning,
@@ -509,6 +550,7 @@ export default function TimerPage() {
     toast,
   ]);
 
+  // Pause: freeze countdown only — do NOT end/save the Notion session
   const handlePomStop = useCallback(() => {
     setPomodoroRunning(false);
     clearInterval(pomIntervalRef.current!);
@@ -520,13 +562,7 @@ export default function TimerPage() {
       setPomodoroRemaining(remaining);
     }
     setPomodoroEndAtMs(null);
-    if (activeSessionId) {
-      stopMutation.mutate(activeSessionId);
-      setActiveSessionId(null);
-    } else if (startMutation.isPending) {
-      pendingPomStopRef.current = true;
-    }
-  }, [activeSessionId, pomodoroEndAtMs, startMutation.isPending, stopMutation]);
+  }, [pomodoroEndAtMs]);
 
   const handlePomReset = useCallback(() => {
     setPomodoroRunning(false);
@@ -549,14 +585,17 @@ export default function TimerPage() {
     setPomodoroRemaining(next.mins * 60);
     setPomodoroEndAtMs(null);
     setPomodoroRunning(false);
-    if (next.type === "work" && selectedTask && selectedProject) {
+    // Auto-start next cycle (work starts a session; breaks just run the timer)
+    if (selectedTask && selectedProject) {
       setTimeout(() => {
-        startMutation.mutate({
-          projectId: selectedProject!.id,
-          projectName: selectedProject!.name,
-          taskId: selectedTask!.id,
-          taskName: selectedTask!.name,
-        });
+        if (next.type === "work") {
+          startMutation.mutate({
+            projectId: selectedProject!.id,
+            projectName: selectedProject!.name,
+            taskId: selectedTask!.id,
+            taskName: selectedTask!.name,
+          });
+        }
         setPomodoroEndAtMs(Date.now() + next.mins * 60 * 1000);
         setPomodoroRunning(true);
       }, 800);
@@ -575,23 +614,42 @@ export default function TimerPage() {
     playBeep();
   }, [cycleIdx, selectedProject, selectedTask, startMutation, toast]);
 
+  // Keep latest values in refs so the interval effect doesn't rebind every mutation tick
+  const pomTickRefs = useRef({
+    isWorkCycle,
+    activeSessionId,
+    startPending: startMutation.isPending,
+    stopMutation,
+    advanceCycle,
+  });
+  pomTickRefs.current = {
+    isWorkCycle,
+    activeSessionId,
+    startPending: startMutation.isPending,
+    stopMutation,
+    advanceCycle,
+  };
+
   useEffect(() => {
     if (pomodoroRunning && pomodoroEndAtMs) {
+      let advanced = false;
       const tick = () => {
         const remaining = Math.max(
           0,
           Math.ceil((pomodoroEndAtMs - Date.now()) / 1000),
         );
         setPomodoroRemaining(remaining);
-        if (remaining <= 0) {
+        if (remaining <= 0 && !advanced) {
+          advanced = true;
           clearInterval(pomIntervalRef.current!);
-          if (isWorkCycle && activeSessionId) {
-            stopMutation.mutate(activeSessionId);
+          const ctx = pomTickRefs.current;
+          if (ctx.isWorkCycle && ctx.activeSessionId) {
+            ctx.stopMutation.mutate(ctx.activeSessionId);
             setActiveSessionId(null);
-          } else if (isWorkCycle && startMutation.isPending) {
+          } else if (ctx.isWorkCycle && ctx.startPending) {
             pendingPomStopRef.current = true;
           }
-          advanceCycle();
+          ctx.advanceCycle();
         }
       };
       tick();
@@ -600,15 +658,7 @@ export default function TimerPage() {
       clearInterval(pomIntervalRef.current!);
     }
     return () => clearInterval(pomIntervalRef.current!);
-  }, [
-    pomodoroRunning,
-    pomodoroEndAtMs,
-    isWorkCycle,
-    activeSessionId,
-    advanceCycle,
-    startMutation.isPending,
-    stopMutation,
-  ]);
+  }, [pomodoroRunning, pomodoroEndAtMs]);
 
   useEffect(() => {
     if (pomodoroRunning && !pomodoroEndAtMs) {
@@ -629,12 +679,14 @@ export default function TimerPage() {
       </div>
 
       {/* Project Selector */}
-      <div className="mb-4 relative">
+      <div className="mb-4 relative" data-selector-dropdown>
         <label className="block text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">
           Project
         </label>
         <button
           data-testid="project-selector"
+          aria-expanded={projectOpen}
+          aria-haspopup="listbox"
           onClick={() => {
             setProjectOpen((o) => !o);
             setTaskOpen(false);
@@ -677,6 +729,10 @@ export default function TimerPage() {
               {projectsLoading ? (
                 <div className="px-4 py-3 text-sm text-muted-foreground">
                   Loading projects…
+                </div>
+              ) : projectsError ? (
+                <div className="px-4 py-3 text-sm text-destructive">
+                  Failed to load projects
                 </div>
               ) : filteredProjects.length === 0 ? (
                 <div className="px-4 py-3 text-sm text-muted-foreground">
@@ -725,12 +781,14 @@ export default function TimerPage() {
       </div>
 
       {/* Task Selector */}
-      <div className="mb-8 relative">
+      <div className="mb-8 relative" data-selector-dropdown>
         <label className="block text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">
           Task
         </label>
         <button
           data-testid="task-selector"
+          aria-expanded={taskOpen}
+          aria-haspopup="listbox"
           onClick={() => {
             if (!selectedProject) return;
             setTaskOpen((o) => !o);
@@ -790,6 +848,10 @@ export default function TimerPage() {
                 <div className="px-4 py-3 text-sm text-muted-foreground">
                   Loading tasks…
                 </div>
+              ) : tasksError ? (
+                <div className="px-4 py-3 text-sm text-destructive">
+                  Failed to load tasks
+                </div>
               ) : filteredTasks.length === 0 ? (
                 <div className="px-4 py-3 text-sm text-muted-foreground">
                   No tasks found
@@ -842,8 +904,9 @@ export default function TimerPage() {
             key={m}
             data-testid={`mode-${m}`}
             onClick={() => {
+              if (m === mode) return;
               if (mode === "stopwatch") handleReset();
-              if (mode === "pomodoro") handlePomStop();
+              if (mode === "pomodoro") handlePomReset();
               setMode(m);
             }}
             className={cn(
@@ -927,6 +990,7 @@ export default function TimerPage() {
             {POMODORO_CYCLES.map((c, i) => (
               <div
                 key={i}
+                title={c.label}
                 className={cn(
                   "flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-all",
                   i === cycleIdx % POMODORO_CYCLES.length

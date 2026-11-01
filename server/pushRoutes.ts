@@ -28,9 +28,12 @@ import type { Express } from "express";
 import fs from "fs";
 import path from "path";
 import webpush from "web-push";
+import { withFileLock } from "./fileLock";
+import { ensureAppKey } from "./notionShared";
 
 const SUBS_PATH =
   process.env.PUSH_SUBS_PATH ?? path.resolve("push-subscriptions.json");
+const LOCK_PATH = SUBS_PATH + ".lock";
 
 // ── VAPID setup ───────────────────────────────────────────────────────────────
 
@@ -64,16 +67,20 @@ interface PushSub {
 }
 
 function loadSubs(): PushSub[] {
-  try {
-    if (fs.existsSync(SUBS_PATH)) {
-      return JSON.parse(fs.readFileSync(SUBS_PATH, "utf8"));
-    }
-  } catch {}
-  return [];
+  return withFileLock(LOCK_PATH, () => {
+    try {
+      if (fs.existsSync(SUBS_PATH)) {
+        return JSON.parse(fs.readFileSync(SUBS_PATH, "utf8"));
+      }
+    } catch {}
+    return [];
+  });
 }
 
 function saveSubs(subs: PushSub[]) {
-  fs.writeFileSync(SUBS_PATH, JSON.stringify(subs, null, 2));
+  withFileLock(LOCK_PATH, () => {
+    fs.writeFileSync(SUBS_PATH, JSON.stringify(subs, null, 2));
+  });
 }
 
 // ── Send helper ───────────────────────────────────────────────────────────────
@@ -144,7 +151,7 @@ export function registerPushRoutes(app: Express) {
 
   // POST /api/push/subscribe
   // Body: { endpoint, keys: { p256dh, auth }, label? }
-  app.post("/api/push/subscribe", (req, res) => {
+  app.post("/api/push/subscribe", ensureAppKey, (req, res) => {
     const { endpoint, keys, label } = req.body as PushSub & { label?: string };
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
@@ -167,7 +174,7 @@ export function registerPushRoutes(app: Express) {
 
   // DELETE /api/push/unsubscribe
   // Body: { endpoint }
-  app.delete("/api/push/unsubscribe", (req, res) => {
+  app.delete("/api/push/unsubscribe", ensureAppKey, (req, res) => {
     const { endpoint } = req.body as { endpoint: string };
     if (!endpoint) return res.status(400).json({ error: "endpoint required" });
 
@@ -179,7 +186,7 @@ export function registerPushRoutes(app: Express) {
   });
 
   // POST /api/push/test — fire a test notification immediately
-  app.post("/api/push/test", async (_req, res) => {
+  app.post("/api/push/test", ensureAppKey, async (_req, res) => {
     const result = await sendPushToAll({
       title: "Focus Timer",
       body: "Push notifications are working!",

@@ -59,7 +59,9 @@ export const mealMicrosSchema = z.record(z.string(), z.number());
 export const insertMealSchema = z.object({
   takenAt: z.string().optional(),
   source: z.enum(["manual", "photo-ai"]).default("manual"),
-  mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).default("snack"),
+  mealType: z
+    .enum(["breakfast", "lunch", "dinner", "snack", "pre-workout"])
+    .default("snack"),
   title: z.string().min(1),
   notes: z.string().optional(),
   photoUrl: z.string().optional(),
@@ -86,7 +88,9 @@ export type Meal = z.infer<typeof mealSchema>;
 
 export const mealPhotoEstimateSchema = z.object({
   title: z.string(),
-  mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).default("snack"),
+  mealType: z
+    .enum(["breakfast", "lunch", "dinner", "snack", "pre-workout"])
+    .default("snack"),
   calories: z.number(),
   protein: z.number(),
   carbs: z.number(),

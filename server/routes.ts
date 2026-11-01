@@ -1,6 +1,5 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { Client } from "@notionhq/client";
 import { storage } from "./storage";
 import { mealStorage } from "./mealStorage";
 import OpenAI from "openai";
@@ -18,59 +17,38 @@ import {
   habitLogSchema,
 } from "@shared/schema";
 import { registerRewardRoutes } from "./rewardRoutes";
+import {
+  PROJECTS_DS,
+  TASKS_DS,
+  NUTRITION_DS,
+  HABITS_DS,
+  MAINTENANCE_CALORIES as DEFAULT_MAINTENANCE_CALORIES,
+  getNotion,
+  getTodayIST,
+  ensureAppKey,
+  queryNotionCollection,
+  createPageInCollection,
+  findOrCreateTodayHabitPage,
+} from "./notionShared";
 
-// Prefer data_source_id when available, but fall back to databases.query for standard Notion API setups.
-const PROJECTS_DS = process.env.PROJECTS_DS; // Projects collection
-const TASKS_DS = process.env.TASKS_DS; // Tasks collection
-const NUTRITION_DS = process.env.NUTRITION_DS;
-const HABITS_DS = process.env.HABITS_DS || "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
-const APP_API_KEY = process.env.APP_API_KEY;
-const DEFAULT_MAINTENANCE_CALORIES = Number(
-  process.env.MAINTENANCE_CALORIES ?? 2400,
-);
+// Re-export for any residual imports
+export { queryNotionCollection } from "./notionShared";
 
-function getNotion() {
-  const token = process.env.NOTION_TOKEN;
-  if (!token) throw new Error("NOTION_TOKEN not set");
-  if (token.length < 10) throw new Error("NOTION_TOKEN is invalid");
-  return new Client({ auth: token });
-}
 function getOpenAI() {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY not set");
   return new OpenAI({ apiKey: key });
 }
 
-function parseId(param: string): number | null {
-  const id = parseInt(param, 10);
+function paramStr(param: string | string[] | undefined): string {
+  return Array.isArray(param) ? String(param[0] ?? "") : String(param ?? "");
+}
+
+function parseId(param: string | string[] | undefined): number | null {
+  const id = parseInt(paramStr(param), 10);
   return Number.isFinite(id) && id > 0 ? id : null;
 }
-function ensureAppKey(req: any, res: any, next: any) {
-  if (!APP_API_KEY) return next();
-  const key = req.header("x-api-key");
-  if (key !== APP_API_KEY) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
-}
-export async function queryNotionCollection(
-  notion: any,
-  id: string,
-  queryPayload: any,
-): Promise<any> {
-  // Prefer data sources when supported, otherwise use databases.query or the raw request.
-  if (notion?.dataSources && typeof notion.dataSources.query === "function") {
-    return notion.dataSources.query({ data_source_id: id, ...queryPayload });
-  }
-  if (notion?.databases && typeof notion.databases.query === "function") {
-    return notion.databases.query({ database_id: id, ...queryPayload });
-  }
-  return notion.request({
-    path: `/databases/${id}/query`,
-    method: "post",
-    body: queryPayload,
-  });
-}
+
 async function createNutritionPageInNotion(
   meal: ReturnType<typeof mealStorage.createMeal>,
 ) {
@@ -93,17 +71,7 @@ async function createNutritionPageInNotion(
     properties.Notes = { rich_text: [{ text: { content: meal.notes } }] };
   if (meal.photoUrl) properties.PhotoURL = { url: meal.photoUrl };
 
-  const resp =
-    notion?.dataSources && typeof notion.dataSources.create === "function"
-      ? await notion.dataSources.create({
-          parent: { data_source_id: NUTRITION_DS } as any,
-          properties,
-        } as any)
-      : await notion.pages.create({
-          parent: { database_id: NUTRITION_DS },
-          properties,
-        } as any);
-
+  const resp = await createPageInCollection(notion, NUTRITION_DS, properties);
   return resp?.id ?? null;
 }
 
@@ -120,17 +88,22 @@ async function upsertDailyNutritionSummary(summary: {
 }) {
   if (!NUTRITION_DS || !process.env.NOTION_TOKEN) return null;
   const notion = getNotion();
+  const summaryTitle = `Nutrition ${summary.date}`;
 
+  // Only match existing *summary* pages by title — never overwrite meal rows
+  // that share the same Date.
   const existing = await queryNotionCollection(notion as any, NUTRITION_DS, {
     filter: {
-      property: "Date",
-      date: { equals: summary.date },
+      and: [
+        { property: "Date", date: { equals: summary.date } },
+        { property: "Name", title: { equals: summaryTitle } },
+      ],
     },
     page_size: 1,
   });
 
   const properties: any = {
-    Name: { title: [{ text: { content: `Nutrition ${summary.date}` } }] },
+    Name: { title: [{ text: { content: summaryTitle } }] },
     Date: { date: { start: summary.date } },
     TotalCalories: { number: summary.totalCalories },
     MaintenanceCalories: { number: summary.maintenanceCalories },
@@ -148,11 +121,55 @@ async function upsertDailyNutritionSummary(summary: {
     return pageId;
   }
 
-  const created = await notion.pages.create({
-    parent: { database_id: NUTRITION_DS },
+  const created = await createPageInCollection(
+    notion,
+    NUTRITION_DS,
     properties,
-  } as any);
+  );
   return created.id;
+}
+
+async function applyNotionTimeDelta(
+  taskId: string,
+  deltaMins: number,
+): Promise<void> {
+  if (!deltaMins || !process.env.NOTION_TOKEN) return;
+  const notion = getNotion();
+  const taskPage: any = await notion.pages.retrieve({ page_id: taskId });
+  const existing = taskPage.properties?.["Time Spent (mins)"]?.number ?? 0;
+  await notion.pages.update({
+    page_id: taskId,
+    properties: {
+      "Time Spent (mins)": { number: Math.max(0, existing + deltaMins) },
+    },
+  });
+}
+
+async function applyDeepWorkDelta(deltaMins: number): Promise<void> {
+  if (!deltaMins || !HABITS_DS || !process.env.NOTION_TOKEN) return;
+  try {
+    const notion = getNotion();
+    const today = getTodayIST();
+    const todayHabit = await queryNotionCollection(notion as any, HABITS_DS, {
+      filter: { property: "Date", date: { equals: today } },
+      page_size: 1,
+    });
+    if (todayHabit.results.length > 0) {
+      const habitPage = todayHabit.results[0];
+      const existingDeepWork =
+        (habitPage as any).properties?.["Deep Work (mins)"]?.number ?? 0;
+      await notion.pages.update({
+        page_id: habitPage.id,
+        properties: {
+          "Deep Work (mins)": {
+            number: Math.max(0, existingDeepWork + deltaMins),
+          },
+        },
+      });
+    }
+  } catch (habitSyncErr) {
+    console.error("Failed to sync deep work to Habits DB:", habitSyncErr);
+  }
 }
 
 async function estimateMealFromImage(imageUrl: string) {
@@ -288,7 +305,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── POST /api/sessions/start — start a timer session ─────────────────────
-  app.post("/api/sessions/start", async (req, res) => {
+  app.post("/api/sessions/start", ensureAppKey, async (req, res) => {
     try {
       const data = insertSessionSchema.parse({
         ...req.body,
@@ -302,17 +319,21 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── POST /api/sessions/:id/stop — stop & sync to Notion ──────────────────
-  app.post("/api/sessions/:id/stop", async (req, res) => {
+  app.post("/api/sessions/:id/stop", ensureAppKey, async (req, res) => {
     try {
       const id = parseId(req.params.id);
       if (id === null) return res.status(400).json({ error: "Invalid id" });
-      const endedAt = new Date().toISOString();
 
-      const all = storage.getAllSessions();
-      const activeSession = all.find((s) => s.id === id);
+      const activeSession = storage.getSessionById(id);
       if (!activeSession)
         return res.status(404).json({ error: "Session not found" });
 
+      // Idempotent: already stopped — return as-is, do not re-add Notion time
+      if (activeSession.endedAt) {
+        return res.json(activeSession);
+      }
+
+      const endedAt = new Date().toISOString();
       const startMs = new Date(activeSession.startedAt).getTime();
       const endMs = new Date(endedAt).getTime();
       const durationMins = parseFloat(((endMs - startMs) / 60000).toFixed(2));
@@ -324,57 +345,17 @@ export function registerRoutes(httpServer: Server, app: Express) {
         let syncFailed = false;
         let syncError = "";
         try {
-          const notion = getNotion();
-          const taskPage: any = await notion.pages.retrieve({
-            page_id: session.taskId,
-          });
-          const existing =
-            taskPage.properties?.["Time Spent (mins)"]?.number ?? 0;
-          await notion.pages.update({
-            page_id: session.taskId,
-            properties: {
-              "Time Spent (mins)": { number: existing + durationMins },
-            },
-          });
+          await applyNotionTimeDelta(session.taskId, durationMins);
           storage.markSynced(id);
           session.syncedToNotion = true;
-
-          // Also sync total deep work to today's Habit tracker
-          try {
-            if (HABITS_DS) {
-              const today = new Intl.DateTimeFormat("en-CA", {
-                timeZone: "Asia/Kolkata",
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-              }).format(new Date());
-
-              const todayHabit = await queryNotionCollection(notion as any, HABITS_DS, {
-                filter: { property: "Date", date: { equals: today } },
-                page_size: 1,
-              });
-
-              if (todayHabit.results.length > 0) {
-                const habitPage = todayHabit.results[0];
-                const existingDeepWork = (habitPage as any).properties?.["Deep Work (mins)"]?.number ?? 0;
-                await notion.pages.update({
-                  page_id: habitPage.id,
-                  properties: {
-                    "Deep Work (mins)": { number: existingDeepWork + durationMins },
-                  },
-                });
-              }
-            }
-          } catch (habitSyncErr) {
-            console.error("Failed to sync deep work to Habits DB:", habitSyncErr);
-          }
+          await applyDeepWorkDelta(durationMins);
         } catch (syncErr: any) {
           syncFailed = true;
           syncError = syncErr.message ?? String(syncErr);
           console.error("Notion sync failed:", syncError);
         }
         if (syncFailed) {
-          return res.status(507).json({
+          return res.status(502).json({
             error: "Session saved but Notion sync failed",
             details: syncError,
             session,
@@ -400,7 +381,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // POST /api/sessions/reload — reload local session store from disk
   // Useful if you manually corrected `focus-timer.db.json` while the server is running.
-  app.post("/api/sessions/reload", (_req, res) => {
+  app.post("/api/sessions/reload", ensureAppKey, (_req, res) => {
     const result = storage.reload();
     res.json({ ok: true, ...result });
   });
@@ -413,32 +394,30 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       const notion = getNotion();
-      const date = payload.date ?? new Date().toISOString().slice(0, 10);
-
-      const properties: any = {
-        Name: { title: [{ text: { content: payload.habitKey } }] },
-        Date: { date: { start: date } },
-        Habit: { rich_text: [{ text: { content: payload.habitKey } }] },
-        Source: { select: { name: payload.source } },
-        Done: { checkbox: true },
-      };
-
-      if (payload.notes) {
-        properties.Notes = {
-          rich_text: [{ text: { content: payload.notes } }],
-        };
+      const date = payload.date ?? getTodayIST();
+      // Update today's habit tracker checkbox (same shape as habitRoutes / streaks)
+      const pageId = await findOrCreateTodayHabitPage(notion, HABITS_DS);
+      const page: any = await notion.pages.retrieve({ page_id: pageId });
+      const prop = page.properties?.[payload.habitKey];
+      if (!prop || prop.type !== "checkbox") {
+        return res.status(400).json({
+          error: `Unknown habit checkbox: ${payload.habitKey}`,
+        });
       }
 
-      const page = await notion.pages.create({
-        parent: { database_id: HABITS_DS },
-        properties,
-      } as any);
+      await notion.pages.update({
+        page_id: pageId,
+        properties: {
+          [payload.habitKey]: { checkbox: true },
+        },
+      });
 
       res.json({
         ok: true,
         habitKey: payload.habitKey,
         date,
-        notionPageId: page.id,
+        notionPageId: pageId,
+        alreadyDone: prop.checkbox === true,
       });
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -542,7 +521,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // PATCH /api/sessions/:id — edit a session, optionally sync delta to Notion
-  app.patch("/api/sessions/:id", async (req, res) => {
+  app.patch("/api/sessions/:id", ensureAppKey, async (req, res) => {
     try {
       const id = parseId(req.params.id);
       if (id === null) return res.status(400).json({ error: "Invalid id" });
@@ -625,7 +604,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           console.error("Notion sync failed:", syncError);
         }
         if (syncFailed) {
-          return res.status(507).json({
+          return res.status(502).json({
             error: "Session saved but Notion sync failed",
             details: syncError,
             session: updated,
@@ -639,13 +618,34 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  // DELETE /api/sessions/:id — delete a session locally
-  app.delete("/api/sessions/:id", (req, res) => {
-    const id = parseId(req.params.id);
-    if (id === null) return res.status(400).json({ error: "Invalid id" });
-    const ok = storage.deleteSession(id);
-    if (!ok) return res.status(404).json({ error: "Session not found" });
-    res.json({ ok: true });
+  // DELETE /api/sessions/:id — delete locally and reverse Notion time if synced
+  app.delete("/api/sessions/:id", ensureAppKey, async (req, res) => {
+    try {
+      const id = parseId(req.params.id);
+      if (id === null) return res.status(400).json({ error: "Invalid id" });
+      const existing = storage.getSessionById(id);
+      if (!existing) return res.status(404).json({ error: "Session not found" });
+
+      const mins = existing.durationMins ?? 0;
+      if (existing.syncedToNotion && mins > 0 && process.env.NOTION_TOKEN) {
+        try {
+          await applyNotionTimeDelta(existing.taskId, -mins);
+          await applyDeepWorkDelta(-mins);
+        } catch (syncErr) {
+          console.error("Failed to reverse Notion time on delete:", syncErr);
+          return res.status(502).json({
+            error: "Could not reverse Notion time; session not deleted",
+            details: (syncErr as Error).message,
+          });
+        }
+      }
+
+      const ok = storage.deleteSession(id);
+      if (!ok) return res.status(404).json({ error: "Session not found" });
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.get("/api/sessions/active", (_req, res) => {

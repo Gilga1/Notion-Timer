@@ -22,7 +22,10 @@ function writeReminderEnabled(value: boolean) {
 }
 
 export default function SettingsPage() {
-  const { data: health } = useQuery<{ ok: boolean; notionConfigured: boolean }>({
+  const { data: health, isLoading: healthLoading, isError: healthError } = useQuery<{
+    ok: boolean;
+    notionConfigured: boolean;
+  }>({
     queryKey: ["/api/health"],
   });
   const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => readReminderEnabled());
@@ -30,6 +33,9 @@ export default function SettingsPage() {
   useEffect(() => {
     writeReminderEnabled(reminderEnabled);
   }, [reminderEnabled]);
+
+  const notionConfigured = health?.notionConfigured === true;
+  const notionUnknown = healthLoading || (!health && !healthError);
 
   return (
     <div className="min-h-screen p-6 md:p-10 max-w-2xl mx-auto">
@@ -55,11 +61,15 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
-            health?.notionConfigured
-              ? "bg-green-500/10 text-green-500"
-              : "bg-red-500/10 text-red-400"
+            notionUnknown
+              ? "bg-secondary text-muted-foreground"
+              : notionConfigured
+                ? "bg-green-500/10 text-green-500"
+                : "bg-red-500/10 text-red-400"
           }`}>
-            {health?.notionConfigured ? (
+            {notionUnknown ? (
+              <>Checking…</>
+            ) : notionConfigured ? (
               <><Check className="w-3 h-3" /> Connected</>
             ) : (
               <><X className="w-3 h-3" /> Not configured</>
@@ -69,7 +79,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Setup instructions */}
-      {!health?.notionConfigured && (
+      {!notionUnknown && !notionConfigured && (
         <div className="bg-card border border-amber-500/20 rounded-xl p-6 mb-6">
           <div className="flex items-start gap-3 mb-4">
             <Info className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />

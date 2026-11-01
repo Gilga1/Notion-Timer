@@ -32,16 +32,17 @@
 import type { Express } from "express";
 import OpenAI from "openai";
 import { Client } from "@notionhq/client";
-
-// ── Config ────────────────────────────────────────────────────────────────────
-
-const HABITS_DB =
-  process.env.HABITS_DS ?? "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
-const MEALS_DB = process.env.MEALS_DS ?? "28dcd7f7-f508-47b2-8026-d7f47757033b";
-const APP_API_KEY = process.env.APP_API_KEY;
-const MAINTENANCE_KCAL = 2150;
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+import {
+  HABITS_DS as HABITS_DB,
+  MEALS_DS as MEALS_DB,
+  MAINTENANCE_CALORIES as MAINTENANCE_KCAL,
+  ensureAppKey,
+  findOrCreateTodayHabitPage,
+  extractHabitMacros,
+  getTodayIST,
+  queryNotionCollection,
+  createPageInCollection,
+} from "./notionShared";
 
 function getNotion() {
   const token = process.env.NOTION_TOKEN;
@@ -56,108 +57,9 @@ function getOpenAI() {
   return new OpenAI({ apiKey: key });
 }
 
-function ensureAppKey(req: any, res: any, next: any) {
-  if (!APP_API_KEY) return next();
-  if (req.header("x-api-key") !== APP_API_KEY)
-    return res.status(401).json({ error: "Unauthorized" });
-  next();
-}
-
-async function queryNotionCollection(
-  notion: any,
-  id: string,
-  queryPayload: any,
-): Promise<any> {
-  // Newer Notion SDKs expose `dataSources` (collection IDs). Older ones use `databases.query`.
-  if (notion?.dataSources && typeof notion.dataSources.query === "function") {
-    return notion.dataSources.query({ data_source_id: id, ...queryPayload });
-  }
-  if (notion?.databases && typeof (notion as any).databases.query === "function") {
-    return (notion as any).databases.query({ database_id: id, ...queryPayload });
-  }
-  return notion.request({
-    path: `/databases/${id}/query`,
-    method: "post",
-    body: queryPayload,
-  });
-}
-
-async function createPageInCollection(
-  notion: any,
-  id: string,
-  properties: any,
-): Promise<any> {
-  // Creating rows is done via `pages.create` (not `dataSources.create`, which creates a new data source).
-  // New schema uses Data Sources (collection IDs) as the parent shape.
-  // Keep a fallback to the old database_id parent for older SDKs/spaces.
-  try {
-    return await notion.pages.create({
-      parent: { data_source_id: id },
-      properties,
-    });
-  } catch (e: any) {
-    return await notion.pages.create({
-      parent: { database_id: id },
-      properties,
-    });
-  }
-}
-
-function getTodayIST(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
-function getNotionNumberFromProperty(prop: any): number | null {
-  if (!prop) return null;
-
-  if (typeof prop.number === "number") return prop.number;
-
-  if (prop.formula && typeof prop.formula.number === "number")
-    return prop.formula.number;
-
-  // Rollups can return { rollup: { type: "number", number: X } } or sometimes { rollup: { number: X } }
-  if (prop.rollup && typeof prop.rollup.number === "number")
-    return prop.rollup.number;
-  if (prop.rollup?.type === "number" && typeof prop.rollup.number === "number")
-    return prop.rollup.number;
-
-  // Rollup arrays: attempt to sum numeric entries (defensive)
-  if (prop.rollup?.type === "array" && Array.isArray(prop.rollup.array)) {
-    const nums = prop.rollup.array
-      .map((item: any) => getNotionNumberFromProperty(item))
-      .filter((n: any) => typeof n === "number") as number[];
-    if (nums.length > 0) return nums.reduce((a, b) => a + b, 0);
-  }
-
-  return null;
-}
-
-/**
- * Finds today's Habit Tracker entry by Date = today (IST).
- * Creates one if it doesn't exist yet.
- * Returns the Notion page ID.
- */
-async function findOrCreateTodayHabitPage(notion: any): Promise<string> {
-  const today = getTodayIST();
-
-  const resp = await queryNotionCollection(notion, HABITS_DB, {
-    filter: { property: "Date", date: { equals: today } },
-    page_size: 1,
-  });
-
-  if (resp.results.length > 0) return resp.results[0].id as string;
-
-  // Create today's entry
-  const created = await createPageInCollection(notion, HABITS_DB, {
-    Name: { title: [{ text: { content: today } }] },
-    Date: { date: { start: today } },
-  });
-  return created.id as string;
+async function findOrCreateToday(notion: any): Promise<string> {
+  if (!HABITS_DB) throw new Error("HABITS_DS not set");
+  return findOrCreateTodayHabitPage(notion, HABITS_DB);
 }
 
 // ── GPT-4o Vision prompt ──────────────────────────────────────────────────────
@@ -368,7 +270,7 @@ export function registerMealRoutes(app: Express) {
 
       const notion = getNotion();
       const today = getTodayIST();
-      const habitPageId = await findOrCreateTodayHabitPage(notion);
+      const habitPageId = await findOrCreateToday(notion);
 
       // "Lunch · office note — Dal Rice"  or  "Lunch — Dal Rice"
       const mealLabel = note
@@ -469,32 +371,16 @@ export function registerMealRoutes(app: Express) {
   app.get("/api/meals/today", ensureAppKey, async (_req, res) => {
     try {
       const notion = getNotion();
-      const habitPageId = await findOrCreateTodayHabitPage(notion);
+      const habitPageId = await findOrCreateToday(notion);
       const page = await (notion as any).pages.retrieve({
         page_id: habitPageId,
       });
 
-      const caloriesFromFormula =
-        getNotionNumberFromProperty(page.properties?.["Calories Rollup (g)"]) ??
-        null;
-
-      // Legacy fallback: older field "Calories (Rollup)" should only be used if it's numeric.
-      const caloriesFromLegacyRollup =
-        getNotionNumberFromProperty(page.properties?.["Calories (Rollup)"]) ??
-        null;
-
-      const calories = caloriesFromFormula ?? caloriesFromLegacyRollup ?? 0;
-
-      const proteinRollup =
-        getNotionNumberFromProperty(page.properties?.["Protein Rollup (g)"]) ??
-        0;
-
-      // Calorie Delta is now a formula — read it, don't compute it
-      const calorieDeltaFormula =
-        getNotionNumberFromProperty(page.properties?.["Calorie Delta"]) ?? null;
-      // Fallback: compute locally if formula hasn't propagated yet
+      const macros = extractHabitMacros(page);
+      const calories = macros.calories ?? 0;
+      const proteinRollup = macros.proteinG ?? 0;
       const calorieDelta =
-        calorieDeltaFormula ??
+        macros.calorieDelta ??
         (calories > 0 ? calories - MAINTENANCE_KCAL : null);
 
       res.json({
@@ -502,7 +388,7 @@ export function registerMealRoutes(app: Express) {
         protein_g: proteinRollup,
         calorieDelta,
         targets: {
-          calories: 2150, // gym day target
+          calories: MAINTENANCE_KCAL,
           maintenance: MAINTENANCE_KCAL,
           protein_g: 150,
         },

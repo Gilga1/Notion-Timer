@@ -1,6 +1,6 @@
 /**
- * ADD THESE to your existing shared/schema.ts
- * These are the frontend-facing types for the rewards system.
+ * Frontend-facing reward types (also defined in server/rewards.ts for the store).
+ * Prefer importing from here in client code.
  */
 
 import { z } from "zod";
@@ -30,14 +30,18 @@ export const rewardSchema = z.object({
   status: rewardStatusSchema,
   unlockedAt: z.string(),
   claimedAt: z.string().optional(),
+  expiresAt: z.string().optional(),
 });
+
 export type Reward = z.infer<typeof rewardSchema>;
 
 export const streakDataSchema = z.object({
   habit: z.string(),
   currentStreak: z.number(),
   longestStreak: z.number(),
-  lastChecked: z.string(),
+  lastChecked: z.string().optional(),
   isComposite: z.boolean(),
+  label: z.string().optional(),
+  description: z.string().optional(),
 });
 export type StreakData = z.infer<typeof streakDataSchema>;

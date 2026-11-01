@@ -1,13 +1,14 @@
 # Focus Timer — Notion Deep Work Tracker
 
-A beautiful, minimal focus timer that syncs your work sessions directly into your Notion Second Brain.
+A focus timer that syncs work sessions, habits, meals, and rewards with your Notion second brain.
 
 ## Stack
 
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui
 - **Backend**: Node.js + Express
-- **Database**: SQLite (local session log via Drizzle ORM)
-- **Notion**: `@notionhq/client` — reads your Projects & Tasks databases, writes time back
+- **Storage**: Local JSON files (sessions, meals, rewards, push subscriptions)
+- **Notion**: `@notionhq/client` — Projects, Tasks, Habits, Meals
+- **Optional**: OpenAI (meal photo + rewards), Web Push, Tavily
 
 ---
 
@@ -22,27 +23,18 @@ npm install
 ### 2. Create a Notion integration
 
 1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations)
-2. Click **+ New integration** → give it a name (e.g. "Focus Timer")
-3. Copy the **Internal Integration Token** (`secret_xxx...`)
+2. Create an integration and copy the **Internal Integration Token**
+3. Share your Projects, Tasks, Habits, and Meals databases with the integration
 
-### 3. Share your databases with the integration
-
-Open each of these in Notion, click **⋯ (More)** → **Add connections** → select your integration:
-
-- Your **Projects** database
-- Your **Tasks** database
-
-> The app pulls database IDs for Projects and Tasks from the env files
-
-### 4. Set your token
+### 3. Configure env
 
 ```bash
 cp .env.example .env
-# Edit .env and paste your token
-# Edit add Project and Task env tokens
+# Fill NOTION_TOKEN, PROJECTS_DS, TASKS_DS, HABITS_DS, MEALS_DS
+# Optional: OPENAI_API_KEY, APP_API_KEY, VAPID_*, BASE_URL, TAVILY_*
 ```
 
-### 5. Run
+### 4. Run
 
 ```bash
 npm run dev
@@ -52,32 +44,34 @@ Open [http://localhost:5000](http://localhost:5000)
 
 ---
 
-## How it works
+## Features
 
-| Feature           | What happens                                                                            |
-| ----------------- | --------------------------------------------------------------------------------------- |
-| Select Project    | Fetches live from Notion (filtered to active/in-progress)                               |
-| Select Task       | Fetches tasks linked to that project                                                    |
-| Start (Stopwatch) | Creates a local session entry, starts the clock                                         |
-| Stop & Save       | Calculates duration, **adds minutes to Notion task's `Time Spent (mins)` field**        |
-| Pomodoro          | 45m focus → 5m break → 45m focus → 10m long break. Each work block auto-saves to Notion |
-| Dashboard         | Charts from local session log — bar chart, pie chart, top tasks, session log            |
+| Area | What it does |
+|------|----------------|
+| Timer | Stopwatch + Pomodoro; writes minutes to Notion task `Time Spent (mins)` |
+| Today | Habit checkboxes, macros, deep work snapshot |
+| Meals | Photo → GPT vision → log to Meals DB + Habit rollups |
+| Dashboard | Local session charts (IST day buckets) |
+| Rewards | Streak milestones → LLM reward suggestions |
+| NFC | `/api/nfc/:slug` marks a habit done |
 
 ## Project structure
 
 ```
-focus-timer/
-├── client/src/
-│   ├── pages/
-│   │   ├── timer.tsx        ← Main timer page (stopwatch + pomodoro)
-│   │   ├── dashboard.tsx    ← Analytics dashboard
-│   │   └── settings.tsx     ← Connection status + pomodoro config
-│   ├── components/
-│   │   └── Sidebar.tsx      ← Navigation sidebar
-│   └── index.css            ← Design tokens + dark mode
-├── server/
-│   ├── routes.ts            ← API routes (Notion + sessions)
-│   └── storage.ts           ← SQLite session storage
-└── shared/
-    └── schema.ts            ← Drizzle schema + Zod types
+├── client/src/pages/     # timer, today, meals, dashboard, rewards, settings
+├── server/               # Express API, Notion sync, scheduler, push
+├── shared/schema.ts      # Zod schemas
+└── *.db.json             # Local JSON stores (gitignored where appropriate)
 ```
+
+## Docker
+
+```bash
+docker compose up -d --build
+```
+
+Persists JSON DBs under the `focus-timer-data` volume (`/app/data`).
+
+## Auth
+
+If `APP_API_KEY` is set, mutating API routes require `x-api-key`. Set matching `VITE_APP_API_KEY` for the client. NFC endpoints stay open for phone tags.

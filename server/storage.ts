@@ -1,30 +1,10 @@
 import fs from "fs";
 import path from "path";
 import type { Session, InsertSession, UpdateSession } from "@shared/schema";
+import { withFileLock } from "./fileLock";
 
 const DB_PATH = process.env.SESSION_DB_PATH ?? path.resolve("focus-timer.db.json");
 const LOCK_PATH = DB_PATH + ".lock";
-
-function acquireLock(maxAttempts = 50, intervalMs = 50): void {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      fs.writeFileSync(LOCK_PATH, process.pid.toString(), { flag: "wx" });
-      return;
-    } catch (err: any) {
-      if (err.code !== "EEXIST") throw err;
-      try {
-        fs.unlinkSync(LOCK_PATH);
-      } catch {}
-      if (i === maxAttempts - 1) throw new Error("Could not acquire lock");
-    }
-  }
-}
-
-function releaseLock(): void {
-  try {
-    fs.unlinkSync(LOCK_PATH);
-  } catch {}
-}
 
 // In-memory store backed by a JSON file.
 // Persist to disk as a JSON array on every write (simple, reliable, no native deps).
@@ -42,25 +22,21 @@ interface SessionRow {
 }
 
 function load(): SessionRow[] {
-  acquireLock();
-  try {
-    if (fs.existsSync(DB_PATH)) {
-      const data = fs.readFileSync(DB_PATH, "utf8");
-      return JSON.parse(data);
-    }
-  } catch {} finally {
-    releaseLock();
-  }
-  return [];
+  return withFileLock(LOCK_PATH, () => {
+    try {
+      if (fs.existsSync(DB_PATH)) {
+        const data = fs.readFileSync(DB_PATH, "utf8");
+        return JSON.parse(data);
+      }
+    } catch {}
+    return [];
+  });
 }
 
 function save(rows: SessionRow[]) {
-  acquireLock();
-  try {
+  withFileLock(LOCK_PATH, () => {
     fs.writeFileSync(DB_PATH, JSON.stringify(rows, null, 2));
-  } finally {
-    releaseLock();
-  }
+  });
 }
 
 function getDateInTimeZone(iso: string, timeZone: string) {
@@ -82,7 +58,6 @@ function getTodayInTimeZone(timeZone: string) {
 }
 
 let _rows: SessionRow[] = load();
-let _lockCount = 0;
 
 function getNextId(): number {
   return _rows.length > 0 ? Math.max(..._rows.map((r) => r.id)) + 1 : 1;
@@ -121,6 +96,13 @@ export interface IStorage {
 
 export class Storage implements IStorage {
   createSession(data: InsertSession): Session {
+    // Only one active session at a time
+    const existingActive = this.getActiveSession();
+    if (existingActive) {
+      throw new Error(
+        `An active session already exists (id=${existingActive.id}). Stop it before starting another.`,
+      );
+    }
     const id = getNextId();
     const row: SessionRow = {
       id,

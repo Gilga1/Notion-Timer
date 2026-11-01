@@ -4,23 +4,19 @@
  * Endpoints:
  *   GET  /api/habits/today          — today's Notion page with all checkbox states
  *   PATCH /api/habits/today/:habit  — check/uncheck a single habit on today's page
- *   GET  /api/nfc/:habitSlug        — NFC tag target: checks the habit, returns a lightweight HTML confirmation
- *
- * NFC tag setup:
- *   Write the URL  http://<your-tailscale-or-local-ip>:5000/api/nfc/thyroid-med  to the tag.
- *   Slug mapping is defined in HABIT_SLUG_MAP below — add/remove as needed.
- *
- * Add to server/index.ts (or routes.ts):
- *   import { registerHabitRoutes } from "./habitRoutes";
- *   registerHabitRoutes(app);
+ *   GET  /api/nfc/:habitSlug        — NFC tag target: checks the habit, returns HTML confirmation
  */
 
 import type { Express } from "express";
-import { Client } from "@notionhq/client";
-import { queryNotionCollection } from "./routes";
-
-const HABITS_DB =
-  process.env.HABITS_DS ?? "bd13c6c6-ca63-4ac6-8d55-75ac013b278b";
+import {
+  HABITS_DS,
+  getNotion,
+  getTodayIST,
+  ensureAppKey,
+  findOrCreateTodayHabitPage,
+  extractHabitMacros,
+  escapeHtml,
+} from "./notionShared";
 
 // Maps NFC-friendly URL slugs to exact Notion property names
 const HABIT_SLUG_MAP: Record<string, string> = {
@@ -41,7 +37,6 @@ const HABIT_SLUG_MAP: Record<string, string> = {
   meds: "Meds",
 };
 
-// All checkbox habits returned in today's response — order matches the daily schedule
 const ALL_HABITS = [
   "Thyroid Med",
   "Spine Mobility",
@@ -60,47 +55,6 @@ const ALL_HABITS = [
   "Isabgol",
 ];
 
-function getNotion() {
-  const token = process.env.NOTION_TOKEN;
-  if (!token || token.length < 10)
-    throw new Error("NOTION_TOKEN not set or invalid");
-  return new Client({ auth: token });
-}
-
-function getTodayIST(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
-async function findOrCreateTodayPage(notion: Client): Promise<string> {
-  const today = getTodayIST();
-
-  // Try to find existing page for today
-  const resp = await queryNotionCollection(notion, HABITS_DB, {
-    filter: { property: "Date", date: { equals: today } },
-    page_size: 1,
-  });
-
-  if (resp.results.length > 0) {
-    return resp.results[0].id as string;
-  }
-
-  // Create today's page if it doesn't exist
-  const created = await (notion as any).pages.create({
-    parent: { database_id: HABITS_DB },
-    properties: {
-      Name: { title: [{ text: { content: today } }] },
-      Date: { date: { start: today } },
-    },
-  });
-
-  return created.id as string;
-}
-
 function extractHabits(page: any): Record<string, boolean> {
   const result: Record<string, boolean> = {};
   for (const habit of ALL_HABITS) {
@@ -110,30 +64,23 @@ function extractHabits(page: any): Record<string, boolean> {
   return result;
 }
 
-function extractMacros(page: any) {
-  return {
-    calories: page.properties?.["Calories"]?.number ?? null,
-    proteinG: page.properties?.["Protein (g)"]?.number ?? null,
-    calorieDelta: page.properties?.["Calorie Delta"]?.number ?? null,
-  };
-}
-
-// ── NFC confirmation HTML ─────────────────────────────────────────────────────
-// Returned when NFC tag is tapped — shows a fullscreen confirmation on the phone
-// without needing the React app to be open.
 function nfcConfirmationHtml(habitName: string, alreadyDone: boolean): string {
-  const emoji = alreadyDone ? "✓" : "✓";
+  const emoji = alreadyDone ? "○" : "✓";
   const color = alreadyDone ? "#888" : "#4caf7d";
   const message = alreadyDone
     ? `${habitName} was already checked`
     : `${habitName} marked done`;
+  const safeName = escapeHtml(habitName);
+  const safeMessage = escapeHtml(message);
+  const safeDate = escapeHtml(getTodayIST());
+  const base = escapeHtml(process.env.BASE_URL ?? "");
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${habitName}</title>
+  <title>${safeName}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
@@ -178,32 +125,31 @@ function nfcConfirmationHtml(habitName: string, alreadyDone: boolean): string {
 </head>
 <body>
   <div class="check">${emoji}</div>
-  <h1>${message}</h1>
-  <p>${getTodayIST()}</p>
-  <a href="${process.env.BASE_URL ?? ""}/">Open app</a>
+  <h1>${safeMessage}</h1>
+  <p>${safeDate}</p>
+  <a href="${base}/">Open app</a>
   <script>
-    // Auto-close after 3s if opened in a browser tab
     setTimeout(() => window.close(), 3000);
   </script>
 </body>
 </html>`;
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
-
 export function registerHabitRoutes(app: Express) {
-  // GET /api/habits/today — full today snapshot
   app.get("/api/habits/today", async (_req, res) => {
     try {
+      if (!HABITS_DS) {
+        return res.status(500).json({ error: "HABITS_DS not set" });
+      }
       const notion = getNotion();
-      const pageId = await findOrCreateTodayPage(notion);
+      const pageId = await findOrCreateTodayHabitPage(notion, HABITS_DS);
       const page = await (notion as any).pages.retrieve({ page_id: pageId });
 
       res.json({
         pageId,
         date: getTodayIST(),
         habits: extractHabits(page),
-        macros: extractMacros(page),
+        macros: extractHabitMacros(page),
       });
     } catch (e: any) {
       console.error("habits/today error:", e.message);
@@ -211,19 +157,23 @@ export function registerHabitRoutes(app: Express) {
     }
   });
 
-  // PATCH /api/habits/today/:habit — toggle a single habit checkbox
-  // Body: { checked: boolean }  (omit to default to true)
-  app.patch("/api/habits/today/:habit", async (req, res) => {
+  app.patch("/api/habits/today/:habit", ensureAppKey, async (req, res) => {
     try {
+      if (!HABITS_DS) {
+        return res.status(500).json({ error: "HABITS_DS not set" });
+      }
       const notion = getNotion();
-      const habitName = decodeURIComponent(req.params.habit);
+      const habitParam = Array.isArray(req.params.habit)
+        ? req.params.habit[0]
+        : req.params.habit;
+      const habitName = decodeURIComponent(String(habitParam ?? ""));
 
       if (!ALL_HABITS.includes(habitName)) {
         return res.status(400).json({ error: `Unknown habit: ${habitName}` });
       }
 
-      const checked = req.body?.checked !== false; // default true
-      const pageId = await findOrCreateTodayPage(notion);
+      const checked = req.body?.checked !== false;
+      const pageId = await findOrCreateTodayHabitPage(notion, HABITS_DS);
 
       await (notion as any).pages.update({
         page_id: pageId,
@@ -239,32 +189,30 @@ export function registerHabitRoutes(app: Express) {
     }
   });
 
-  // GET /api/nfc/:habitSlug — NFC tag target
-  // Checks the habit and returns a standalone HTML confirmation page.
-  // No auth needed — only accessible on your local/Tailscale network.
+  // NFC intentionally open — phone tags can't send API keys
   app.get("/api/nfc/:habitSlug", async (req, res) => {
-    const slug = req.params.habitSlug.toLowerCase();
+    const slug = String(req.params.habitSlug ?? "").toLowerCase();
     const habitName = HABIT_SLUG_MAP[slug];
 
     if (!habitName) {
+      const valid = escapeHtml(Object.keys(HABIT_SLUG_MAP).join(", "));
       return res
         .status(404)
         .send(
-          `<h2>Unknown habit slug: ${slug}</h2><p>Valid slugs: ${Object.keys(HABIT_SLUG_MAP).join(", ")}</p>`,
+          `<h2>Unknown habit slug: ${escapeHtml(slug)}</h2><p>Valid slugs: ${valid}</p>`,
         );
     }
 
     let alreadyDone = false;
 
     try {
+      if (!HABITS_DS) throw new Error("HABITS_DS not set");
       const notion = getNotion();
-      const pageId = await findOrCreateTodayPage(notion);
+      const pageId = await findOrCreateTodayHabitPage(notion, HABITS_DS);
 
-      // Check current state first
       const page = await (notion as any).pages.retrieve({ page_id: pageId });
       alreadyDone = page.properties?.[habitName]?.checkbox === true;
 
-      // Always set to true (idempotent — tapping twice is fine)
       if (!alreadyDone) {
         await (notion as any).pages.update({
           page_id: pageId,
@@ -273,11 +221,10 @@ export function registerHabitRoutes(app: Express) {
       }
     } catch (e: any) {
       console.error("nfc error:", e.message);
-      // Still return a page — don't leave the phone hanging
       return res
         .status(200)
         .send(
-          `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#0f0f0f;color:#f0ede8"><h2>⚠ Sync failed</h2><p>${e.message}</p></body></html>`,
+          `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#0f0f0f;color:#f0ede8"><h2>Sync failed</h2><p>${escapeHtml(e.message ?? "Unknown error")}</p></body></html>`,
         );
     }
 
@@ -285,7 +232,6 @@ export function registerHabitRoutes(app: Express) {
     res.send(nfcConfirmationHtml(habitName, alreadyDone));
   });
 
-  // GET /api/habits/nfc-urls — returns all NFC tag URLs for the settings/QR screen
   app.get("/api/habits/nfc-urls", (_req, res) => {
     const base =
       process.env.BASE_URL ?? `http://localhost:${process.env.PORT ?? 5000}`;

@@ -1,31 +1,10 @@
 ﻿import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
-import { URLSearchParams } from "url";
+import { withFileLock } from "./fileLock";
 
 const DB_PATH = process.env.REWARDS_DB_PATH ?? path.resolve("rewards.db.json");
 const LOCK_PATH = DB_PATH + ".lock";
-
-function acquireLock(maxAttempts = 50, intervalMs = 50): void {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      fs.writeFileSync(LOCK_PATH, process.pid.toString(), { flag: "wx" });
-      return;
-    } catch (err: any) {
-      if (err.code !== "EEXIST") throw err;
-      try {
-        fs.unlinkSync(LOCK_PATH);
-      } catch {}
-      if (i === maxAttempts - 1) throw new Error("Could not acquire lock");
-    }
-  }
-}
-
-function releaseLock(): void {
-  try {
-    fs.unlinkSync(LOCK_PATH);
-  } catch {}
-}
 
 // â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -100,25 +79,21 @@ function pickCategory(
 // â”€â”€ Persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function loadRewards(): Reward[] {
-  acquireLock();
-  try {
-    if (fs.existsSync(DB_PATH)) {
-      const data = fs.readFileSync(DB_PATH, "utf8");
-      return JSON.parse(data);
-    }
-  } catch {} finally {
-    releaseLock();
-  }
-  return [];
+  return withFileLock(LOCK_PATH, () => {
+    try {
+      if (fs.existsSync(DB_PATH)) {
+        const data = fs.readFileSync(DB_PATH, "utf8");
+        return JSON.parse(data);
+      }
+    } catch {}
+    return [];
+  });
 }
 
 function saveRewards(rewards: Reward[]): void {
-  acquireLock();
-  try {
+  withFileLock(LOCK_PATH, () => {
     fs.writeFileSync(DB_PATH, JSON.stringify(rewards, null, 2));
-  } finally {
-    releaseLock();
-  }
+  });
 }
 
 // â”€â”€ LLM Reward Generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -163,18 +138,23 @@ export async function generateReward(
   // summary of top results to the prompt to ground the LLM suggestions.
   async function webSearch(query: string): Promise<string> {
     const key = process.env.TAVILY_API_KEY;
-    const endpoint = process.env.TAVILY_ENDPOINT; // e.g. https://api.tavily.com/v1/search
-    if (!key || !endpoint) return "";
+    const endpoint =
+      process.env.TAVILY_ENDPOINT ?? "https://api.tavily.com/search";
+    if (!key) return "";
 
     try {
-      const params = new URLSearchParams({ q: query });
-      const url = `${endpoint}?${params.toString()}`;
-      const resp = await fetch(url, {
+      const resp = await fetch(endpoint, {
+        method: "POST",
         headers: {
-          Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
           Accept: "application/json",
         },
+        body: JSON.stringify({
+          api_key: key,
+          query,
+          max_results: 5,
+          search_depth: "basic",
+        }),
       });
       if (!resp.ok) return "";
       const data = await resp.json();
@@ -184,7 +164,7 @@ export async function generateReward(
           .slice(0, 5)
           .map(
             (r: any, i: number) =>
-              `${i + 1}. ${r.title ?? r.headline ?? r.snippet ?? r.url}`,
+              `${i + 1}. ${r.title ?? r.headline ?? r.snippet ?? r.content ?? r.url}`,
           )
           .join("\n");
       }
@@ -440,7 +420,8 @@ export class RewardStore {
     return r;
   }
 
-  // Returns new rewards that were just generated from current streaks
+  // Returns new rewards that were just generated from current streaks.
+  // Only generates the highest newly crossed milestone per habit (not every missed one).
   async syncWithStreaks(
     streaks: Array<{
       habit: string;
@@ -451,31 +432,28 @@ export class RewardStore {
     const newRewards: Reward[] = [];
 
     for (const s of streaks) {
-      // Find which milestones have been crossed but no reward exists yet
-      for (const milestone of STREAK_MILESTONES) {
-        if (
-          s.currentStreak >= milestone &&
-          !this.hasReward(s.habit, milestone)
-        ) {
-          try {
-            // Get a human-readable label
-            const label = s.isComposite ? s.habit.replace(/-/g, " ") : s.habit;
+      const crossed = STREAK_MILESTONES.filter(
+        (m) => s.currentStreak >= m && !this.hasReward(s.habit, m),
+      );
+      if (crossed.length === 0) continue;
 
-            const rewardData = await generateReward(
-              s.habit,
-              label,
-              milestone,
-              s.isComposite,
-            );
-            const reward = this.addReward(rewardData);
-            newRewards.push(reward);
-          } catch (e) {
-            console.error(
-              `Failed to generate reward for ${s.habit} at ${milestone}:`,
-              e,
-            );
-          }
-        }
+      // Only unlock the highest newly crossed milestone to avoid spam/cost
+      const milestone = crossed[crossed.length - 1];
+      try {
+        const label = s.isComposite ? s.habit.replace(/-/g, " ") : s.habit;
+        const rewardData = await generateReward(
+          s.habit,
+          label,
+          milestone,
+          s.isComposite,
+        );
+        const reward = this.addReward(rewardData);
+        newRewards.push(reward);
+      } catch (e) {
+        console.error(
+          `Failed to generate reward for ${s.habit} at ${milestone}:`,
+          e,
+        );
       }
     }
 

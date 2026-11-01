@@ -107,8 +107,20 @@ function CelebrationBanner({
     }
   })();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="mx-4 max-w-md w-full bg-card border border-border rounded-3xl shadow-2xl overflow-hidden animate-[spring_0.5s_cubic-bezier(0.34,1.56,0.64,1)]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Reward unlocked"
+      onClick={onDismiss}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onDismiss();
+      }}
+    >
+      <div
+        className="mx-4 max-w-md w-full bg-card border border-border rounded-3xl shadow-2xl overflow-hidden animate-[spring_0.5s_cubic-bezier(0.34,1.56,0.64,1)]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Confetti strip */}
         <div className="h-2 bg-gradient-to-r from-yellow-400 via-pink-400 to-purple-400" />
         <div className="p-8 text-center">

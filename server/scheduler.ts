@@ -86,34 +86,36 @@ const DAILY_REMINDERS = [
 
 const MONTHLY_REMINDERS = [
   {
-    // 30th of every month — pay ICICI, Axis, HDFC + rent reminder
-    cron: "0 0 9 30 * *",
-    title: "💳 Bill day tomorrow",
-    body: "Pay ICICI, Axis, HDFC credit cards + rent transfer by 1st.",
-    tag: "bills-1st",
-  },
-  {
     // 19th of every month — SBI LIC premium due tomorrow
     cron: "0 0 9 19 * *",
-    title: "📋 SBI LIC Premium",
+    title: "SBI LIC Premium",
     body: "SBI LIC premium due tomorrow (20th). Pay today.",
     tag: "lic-premium",
   },
   {
     // 22nd of every month — Amex bill just generated
     cron: "0 0 9 22 * *",
-    title: "💳 Amex Bill Generated",
+    title: "Amex Bill Generated",
     body: "Amex statement generated today. Pay within 5 days.",
     tag: "amex",
   },
   {
     // 27th — final Amex reminder (in case it wasn't paid)
     cron: "0 0 9 27 * *",
-    title: "⚠️ Amex — Last Reminder",
+    title: "Amex — Last Reminder",
     body: "Amex bill due in ~2 days. Pay now to avoid interest.",
     tag: "amex-final",
   },
 ];
+
+/** True when tomorrow (IST) is the 1st — works for Feb/short months. */
+function isLastDayOfMonthIST(): boolean {
+  const tomorrow = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+  );
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.getDate() === 1;
+}
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
@@ -147,6 +149,25 @@ export function startScheduler() {
     );
   }
 
+  // Last calendar day of month (IST) — bill day tomorrow
+  cron.schedule(
+    "0 0 9 * * *",
+    async () => {
+      if (!isLastDayOfMonthIST()) return;
+      console.log("[scheduler] Monthly: Bill day tomorrow");
+      const result = await sendPushToAll({
+        title: "Bill day tomorrow",
+        body: "Pay ICICI, Axis, HDFC credit cards + rent transfer by 1st.",
+        tag: "bills-1st",
+        url: base,
+      });
+      console.log(
+        `[scheduler] Bill day tomorrow: sent=${result.sent} failed=${result.failed}`,
+      );
+    },
+    { timezone: "Asia/Kolkata" },
+  );
+
   // Register monthly reminders
   for (const reminder of MONTHLY_REMINDERS) {
     cron.schedule(
@@ -170,6 +191,6 @@ export function startScheduler() {
   }
 
   console.log(
-    `[scheduler] Started — ${DAILY_REMINDERS.length} daily + ${MONTHLY_REMINDERS.length} monthly reminders active (IST)`,
+    `[scheduler] Started — ${DAILY_REMINDERS.length} daily + ${MONTHLY_REMINDERS.length + 1} monthly reminders active (IST)`,
   );
 }

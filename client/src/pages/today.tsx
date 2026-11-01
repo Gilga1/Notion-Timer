@@ -1,19 +1,9 @@
 /**
- * client/src/pages/today.tsx
- *
- * The home screen. Shows:
- *   - Today's habit checklist (tap to check, syncs to Notion instantly)
- *   - Calorie + protein progress rings
- *   - Active focus session banner
- *   - 7-day habit streak mini-bars
- *
- * Add to your router (wouter):
- *   import Today from "./pages/today";
- *   <Route path="/" component={Today} />
+ * Today — home screen: habit checklist, macros, deep work, 7-day streaks.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -71,7 +61,7 @@ function Ring({
 }) {
   const r = (size - 10) / 2;
   const circ = 2 * Math.PI * r;
-  const pct = Math.min(value / max, 1);
+  const pct = max > 0 ? Math.min(value / max, 1) : 0;
   const dash = pct * circ;
   const over = value > max;
 
@@ -246,7 +236,12 @@ export default function TodayPage() {
       try {
         await toggleHabit(name, next);
         // Invalidate so next background refetch gets fresh data
-        qc.invalidateQueries({ queryKey: ["today-summary"] });
+        await qc.invalidateQueries({ queryKey: ["today-summary"] });
+        // Drop optimistic override so server state can win
+        setOptimistic((p) => {
+          const { [name]: _removed, ...rest } = p;
+          return rest;
+        });
       } catch {
         // Revert on failure
         setOptimistic((p) => ({ ...p, [name]: current }));

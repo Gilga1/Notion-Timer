@@ -13,15 +13,26 @@ import Sidebar from "@/components/Sidebar";
 import MealsPage from "@/pages/meals";
 import TodayPage from "@/pages/today";
 
+const THEME_KEY = "focus-timer-theme";
+
+function readStoredTheme(): "light" | "dark" {
+  try {
+    const raw = localStorage.getItem(THEME_KEY);
+    if (raw === "light" || raw === "dark") return raw;
+  } catch {}
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
 function AppShell() {
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  });
+  const [theme, setTheme] = useState<"light" | "dark">(() => readStoredTheme());
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {}
   }, [theme]);
 
   return (
