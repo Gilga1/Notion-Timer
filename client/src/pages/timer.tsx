@@ -667,9 +667,32 @@ export default function TimerPage() {
   }, [pomodoroRunning, pomodoroEndAtMs, pomodoroRemaining]);
 
   const pomProgress = pomodoroRemaining / (currentCycle.mins * 60);
+  const focusMode = isRunning || pomodoroRunning;
+
+  // Tell AppShell to hide the sidebar while focused
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("focus-timer-mode", { detail: { active: focusMode } }),
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("focus-timer-mode", { detail: { active: false } }),
+      );
+    };
+  }, [focusMode]);
 
   return (
-    <div className="min-h-screen p-6 md:p-10 max-w-2xl mx-auto">
+    <div
+      className={cn(
+        "transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        focusMode
+          ? "fixed inset-0 z-40 bg-background flex flex-col items-center justify-center p-6 md:p-10 timer-focus-shell"
+          : "min-h-screen p-6 md:p-10 max-w-2xl mx-auto",
+      )}
+    >
+      {/* Header + selectors + mode — hide while focused */}
+      {!focusMode && (
+      <>
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-xl font-semibold text-foreground">Focus Timer</h1>
@@ -920,18 +943,26 @@ export default function TimerPage() {
           </button>
         ))}
       </div>
+      </>
+      )}
 
       {/* Timer display */}
       {mode === "stopwatch" ? (
         <div
           className={cn(
-            "flex flex-col items-center gap-8 p-8 rounded-2xl border border-border bg-card transition-all",
+            "flex flex-col items-center transition-all duration-500",
+            focusMode
+              ? "gap-10 w-full max-w-3xl"
+              : "gap-8 p-8 rounded-2xl border border-border bg-card",
             isRunning && "timer-running",
           )}
         >
           <div
             data-testid="stopwatch-display"
-            className="timer-display text-foreground"
+            className={cn(
+              "timer-display text-foreground transition-all duration-500",
+              focusMode && "timer-display-focus",
+            )}
           >
             {formatTime(elapsed)}
           </div>
@@ -981,12 +1012,20 @@ export default function TimerPage() {
         /* ── Pomodoro ────────────────────────────────────── */
         <div
           className={cn(
-            "flex flex-col items-center gap-6 p-8 rounded-2xl border border-border bg-card transition-all",
+            "flex flex-col items-center transition-all duration-500",
+            focusMode
+              ? "gap-8 w-full max-w-3xl"
+              : "gap-6 p-8 rounded-2xl border border-border bg-card",
             pomodoroRunning && "timer-running",
           )}
         >
           {/* Cycle indicator */}
-          <div className="flex items-center gap-2">
+          <div
+            className={cn(
+              "flex items-center gap-2 transition-opacity duration-300",
+              focusMode && "opacity-80",
+            )}
+          >
             {POMODORO_CYCLES.map((c, i) => (
               <div
                 key={i}
@@ -1017,12 +1056,23 @@ export default function TimerPage() {
 
           {/* Ring + time */}
           <div className="relative flex items-center justify-center">
-            <TimerRing progress={pomProgress} isWork={isWorkCycle} size={260} />
+            <TimerRing
+              progress={pomProgress}
+              isWork={isWorkCycle}
+              size={focusMode ? 360 : 260}
+            />
             <div className="absolute flex flex-col items-center">
               <span
                 data-testid="pomodoro-display"
-                className="timer-display text-foreground"
-                style={{ fontSize: "clamp(2rem, 6vw, 3.5rem)" }}
+                className={cn(
+                  "timer-display text-foreground transition-all duration-500",
+                  focusMode && "timer-display-focus",
+                )}
+                style={
+                  focusMode
+                    ? undefined
+                    : { fontSize: "clamp(2rem, 6vw, 3.5rem)" }
+                }
               >
                 {formatTime(pomodoroRemaining)}
               </span>
@@ -1074,17 +1124,19 @@ export default function TimerPage() {
             </div>
           )}
 
-          <div className="w-full pt-2 border-t border-border flex justify-between text-xs text-muted-foreground">
-            <span>Cycle {Math.floor(cycleIdx / 4) + 1}</span>
-            <span>
-              Total today: {formatTime(Math.round(totalTodayMins * 60))}
-            </span>
-          </div>
+          {!focusMode && (
+            <div className="w-full pt-2 border-t border-border flex justify-between text-xs text-muted-foreground">
+              <span>Cycle {Math.floor(cycleIdx / 4) + 1}</span>
+              <span>
+                Total today: {formatTime(Math.round(totalTodayMins * 60))}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
       {/* Today's sessions */}
-      <TodaySessions />
+      {!focusMode && <TodaySessions />}
     </div>
   );
 }
