@@ -439,7 +439,7 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
+    <div className="w-full min-w-0 max-w-2xl mx-auto px-4 py-6 box-border">
       {/* Celebration overlay */}
       <CelebrationBanner
         rewards={newRewards}
@@ -455,20 +455,17 @@ export default function RewardsPage() {
           </p>
         </div>
           <button
+            type="button"
             onClick={handleSync}
             disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-colors disabled:opacity-50"
+            aria-label={syncing ? "Syncing streaks" : "Sync streaks"}
+            title={syncing ? "Syncing…" : "Sync streaks"}
+            className="flex items-center justify-center p-2.5 text-sm font-medium bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-colors disabled:opacity-50"
           >
             {syncing ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-muted-foreground rounded-full animate-spin" />
-                Checking...
-              </>
+              <span className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
             ) : (
-              <>
-                <RefreshCw className="w-4 h-4" />
-                <span>Sync streaks</span>
-              </>
+              <RefreshCw className="w-4 h-4" />
             )}
           </button>
       </div>

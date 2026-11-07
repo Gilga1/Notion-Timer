@@ -4,6 +4,14 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 /* ── Design tokens ── */
 :root {
   --font-body: 'General Sans', 'Inter', sans-serif;

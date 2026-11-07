@@ -143,7 +143,7 @@ function HabitRow({
     <button
       onClick={onToggle}
       disabled={loading}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left
+      className={`w-full min-w-0 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-xl border transition-all text-left
         ${
           checked
             ? "bg-primary/20 border-primary/50"
@@ -160,8 +160,8 @@ function HabitRow({
         <p className="text-xs text-muted-foreground">{meta.time}</p>
       </div>
 
-      {/* 7-day mini streak */}
-      <div className="flex gap-0.5 items-center flex-shrink-0">
+      {/* 7-day mini streak — hidden on very narrow screens to avoid overflow */}
+      <div className="hidden min-[400px]:flex gap-0.5 items-center flex-shrink-0">
         {Array.from({ length: 7 }, (_, i) => (
           <div
             key={i}
@@ -342,7 +342,7 @@ export default function TodayPage() {
           : "text-red-400";
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6 pb-24">
+    <div className="w-full min-w-0 max-w-lg mx-auto px-4 py-6 pb-24 box-border">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -378,11 +378,12 @@ export default function TodayPage() {
       )}
 
       {/* Stats row */}
-      <div className="flex items-center justify-around p-4 bg-card border border-border rounded-2xl mb-5">
+      <div className="grid grid-cols-2 gap-3 p-3 sm:flex sm:items-center sm:justify-around sm:gap-0 sm:p-4 bg-card border border-border rounded-2xl mb-5">
         <Ring
           value={macros.calories}
           max={targets.calories}
           color="#e09c40"
+          size={72}
           label="Calories"
           sub="kcal"
         />
@@ -390,6 +391,7 @@ export default function TodayPage() {
           value={macros.protein_g}
           max={targets.protein}
           color="#5b9bd5"
+          size={72}
           label="Protein"
           sub="g"
         />
@@ -397,14 +399,15 @@ export default function TodayPage() {
           value={habitsDone}
           max={habitsTotal}
           color="#4caf7d"
+          size={72}
           label="Habits"
           sub={`${habitPct}%`}
         />
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center justify-center gap-1">
           <span className="text-xl font-semibold text-foreground">
             {deepWork.todayHours}h
           </span>
-          <span className="text-xs text-muted-foreground">deep work</span>
+          <span className="text-xs text-muted-foreground text-center">deep work</span>
           <span className="text-[10px] text-muted-foreground/70">today</span>
         </div>
       </div>
