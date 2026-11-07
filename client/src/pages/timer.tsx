@@ -14,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { NotionProject, NotionTask, Session } from "@shared/schema";
 
 // Pomodoro config
@@ -159,6 +160,7 @@ function TimerRing({
 export default function TimerPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
 
   // ── Mode ──────────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<Mode>("stopwatch");
@@ -687,7 +689,7 @@ export default function TimerPage() {
         "transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
         focusMode
           ? "fixed inset-0 z-40 bg-background flex flex-col items-center justify-center p-6 md:p-10 timer-focus-shell"
-          : "min-h-screen p-6 md:p-10 max-w-2xl mx-auto",
+          : "w-full min-w-0 min-h-screen px-4 py-5 sm:px-6 md:p-10 max-w-2xl mx-auto box-border",
       )}
     >
       {/* Header + selectors + mode — hide while focused */}
@@ -953,7 +955,7 @@ export default function TimerPage() {
             "flex flex-col items-center transition-all duration-500",
             focusMode
               ? "gap-10 w-full max-w-3xl"
-              : "gap-8 p-8 rounded-2xl border border-border bg-card",
+              : "w-full gap-8 p-4 sm:p-8 rounded-2xl border border-border bg-card box-border",
             isRunning && "timer-running",
           )}
         >
@@ -1015,14 +1017,14 @@ export default function TimerPage() {
             "flex flex-col items-center transition-all duration-500",
             focusMode
               ? "gap-8 w-full max-w-3xl"
-              : "gap-6 p-8 rounded-2xl border border-border bg-card",
+              : "w-full gap-6 p-4 sm:p-8 rounded-2xl border border-border bg-card box-border",
             pomodoroRunning && "timer-running",
           )}
         >
           {/* Cycle indicator */}
           <div
             className={cn(
-              "flex items-center gap-2 transition-opacity duration-300",
+              "flex flex-wrap items-center justify-center gap-2 max-w-full transition-opacity duration-300",
               focusMode && "opacity-80",
             )}
           >
@@ -1059,7 +1061,7 @@ export default function TimerPage() {
             <TimerRing
               progress={pomProgress}
               isWork={isWorkCycle}
-              size={focusMode ? 360 : 260}
+              size={focusMode ? 360 : isMobile ? 220 : 260}
             />
             <div className="absolute flex flex-col items-center">
               <span

@@ -66,7 +66,7 @@ function AppShell() {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen w-full min-w-0 overflow-hidden bg-background text-foreground">
       <Sidebar
         theme={theme}
         onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
@@ -76,7 +76,7 @@ function AppShell() {
       />
       <main
         className={cn(
-          "flex-1 overflow-y-auto transition-all duration-300",
+          "flex-1 min-w-0 w-full overflow-x-hidden overflow-y-auto transition-all duration-300",
           timerFocus && "overflow-hidden",
         )}
       >
